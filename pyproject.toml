@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "notatki-ai-desktop"
+version = "0.1.0"
+description = "Desktopowa aplikacja do zamiany odręcznych notatek ze zdjęć na edytowalne notatki tekstowe."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Kamil" }
+]
+dependencies = [
+  "PySide6>=6.7",
+]
+
+[project.scripts]
+notatki-ai = "app.main:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
