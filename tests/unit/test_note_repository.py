@@ -120,3 +120,39 @@ def test_repository_deletes_note_and_related_directories(tmp_path: Path) -> None
     assert not repository.has_note(note.id)
     assert not note_upload_dir.exists()
     assert not prepared_dir.exists()
+
+
+def test_repository_moves_note_to_trash_and_restores_it(tmp_path: Path) -> None:
+    repository = FileNoteRepository(base_dir=tmp_path)
+    note = Note.create_empty()
+    note.title = "Do kosza"
+    repository.save(note)
+
+    repository.move_to_trash(note.id)
+
+    assert not repository.has_note(note.id)
+    assert repository.has_trashed_note(note.id)
+    assert [trashed.id for trashed in repository.list_trashed_notes()] == [note.id]
+
+    repository.restore_from_trash(note.id)
+
+    assert repository.has_note(note.id)
+    assert not repository.has_trashed_note(note.id)
+
+
+def test_repository_deletes_trashed_note_permanently(tmp_path: Path) -> None:
+    repository = FileNoteRepository(base_dir=tmp_path)
+    note = Note.create_empty()
+    note.title = "Do trwałego usunięcia"
+    repository.save(note)
+
+    note_upload_dir = repository.uploads_dir / note.id
+    note_upload_dir.mkdir(parents=True, exist_ok=True)
+    (note_upload_dir / "photo.jpg").write_bytes(b"image")
+
+    repository.move_to_trash(note.id)
+    repository.delete_from_trash(note.id)
+
+    assert not repository.has_note(note.id)
+    assert not repository.has_trashed_note(note.id)
+    assert not note_upload_dir.exists()

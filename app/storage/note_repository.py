@@ -13,12 +13,18 @@ class FileNoteRepository:
         root_dir = base_dir or Path.cwd() / "app_data"
         self.base_dir = root_dir
         self.notes_dir = self.base_dir / "notes"
+        self.trash_dir = self.base_dir / "trash"
         self.uploads_dir = self.base_dir / "uploads"
         self.notes_dir.mkdir(parents=True, exist_ok=True)
+        self.trash_dir.mkdir(parents=True, exist_ok=True)
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
 
     def list_notes(self) -> list[Note]:
         notes = [self.get_note(path.stem) for path in self.notes_dir.glob("*.json")]
+        return sorted(notes, key=lambda note: note.updated_at, reverse=True)
+
+    def list_trashed_notes(self) -> list[Note]:
+        notes = [self.get_trashed_note(path.stem) for path in self.trash_dir.glob("*.json")]
         return sorted(notes, key=lambda note: note.updated_at, reverse=True)
 
     def get_note(self, note_id: str) -> Note:
@@ -27,8 +33,17 @@ class FileNoteRepository:
             payload = json.load(file)
         return Note.from_dict(payload)
 
+    def get_trashed_note(self, note_id: str) -> Note:
+        note_path = self._trash_note_path(note_id)
+        with note_path.open("r", encoding="utf-8") as file:
+            payload = json.load(file)
+        return Note.from_dict(payload)
+
     def has_note(self, note_id: str) -> bool:
         return self._note_path(note_id).exists()
+
+    def has_trashed_note(self, note_id: str) -> bool:
+        return self._trash_note_path(note_id).exists()
 
     def save(self, note: Note) -> Note:
         note.touch()
@@ -104,5 +119,43 @@ class FileNoteRepository:
         if prepared_dir.exists():
             shutil.rmtree(prepared_dir)
 
+    def move_to_trash(self, note_id: str) -> None:
+        note_path = self._note_path(note_id)
+        if not note_path.exists():
+            return
+
+        trash_path = self._trash_note_path(note_id)
+        trash_path.parent.mkdir(parents=True, exist_ok=True)
+        if trash_path.exists():
+            trash_path.unlink()
+        shutil.move(str(note_path), str(trash_path))
+
+    def restore_from_trash(self, note_id: str) -> None:
+        trash_path = self._trash_note_path(note_id)
+        if not trash_path.exists():
+            return
+
+        note_path = self._note_path(note_id)
+        note_path.parent.mkdir(parents=True, exist_ok=True)
+        if note_path.exists():
+            note_path.unlink()
+        shutil.move(str(trash_path), str(note_path))
+
+    def delete_from_trash(self, note_id: str) -> None:
+        trash_path = self._trash_note_path(note_id)
+        if trash_path.exists():
+            trash_path.unlink()
+
+        note_uploads_dir = self.uploads_dir / note_id
+        if note_uploads_dir.exists():
+            shutil.rmtree(note_uploads_dir)
+
+        prepared_dir = self.base_dir / "prepared" / note_id
+        if prepared_dir.exists():
+            shutil.rmtree(prepared_dir)
+
     def _note_path(self, note_id: str) -> Path:
         return self.notes_dir / f"{note_id}.json"
+
+    def _trash_note_path(self, note_id: str) -> Path:
+        return self.trash_dir / f"{note_id}.json"

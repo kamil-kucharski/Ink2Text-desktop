@@ -3,6 +3,7 @@ from pathlib import Path
 from app.services import (
     PDFExportPayload,
     build_note_html,
+    convert_note_content_to_html,
     convert_note_content_to_editor_html,
     export_note_to_pdf,
 )
@@ -57,7 +58,8 @@ def test_build_note_html_formats_title_and_lists() -> None:
         )
     )
 
-    assert 'class="note-title">Moja notatka<' in html
+    assert 'class="note-title"' not in html
+    assert "Moja notatka" not in html
     assert "<h3>Wstęp</h3>" in html
     assert "<h4>Szczegóły</h4>" in html
     assert "<strong>ważne</strong>" in html
@@ -77,6 +79,97 @@ def test_build_note_html_hides_generic_note_title() -> None:
 
     assert 'class="note-title"' not in html
     assert "<p>Treść notatki</p>" in html
+
+
+def test_build_note_html_omits_markdown_separators() -> None:
+    html = build_note_html(
+        PDFExportPayload(
+            title="Notatka",
+            content="Sekcja 1\n---\nSekcja 2\n***\nSekcja 3",
+        )
+    )
+
+    assert "<p>---</p>" not in html
+    assert "<p>***</p>" not in html
+    assert "Sekcja 1" in html
+    assert "Sekcja 2" in html
+    assert "Sekcja 3" in html
+
+
+def test_build_note_html_renders_latex_math_symbols() -> None:
+    html = build_note_html(
+        PDFExportPayload(
+            title="Matematyka",
+            content=r"$\frac{dy}{1} = \frac{dz}{3y^2} = \frac{dx}{0}$ oraz $\alpha_1 \leq \beta^2$",
+        )
+    )
+
+    assert r"\frac" not in html
+    assert "$" not in html
+    assert "&frasl;" in html
+    assert "dy" in html
+    assert "3y<sup>2</sup>" in html
+    assert "&alpha;<sub>1</sub>" in html
+    assert "&le;" in html
+    assert "&beta;<sup>2</sup>" in html
+
+
+def test_convert_html_content_renders_raw_latex_math() -> None:
+    html = convert_note_content_to_html(
+        r"<html><body><p>$x^2 + \gamma_3$</p></body></html>",
+        "html",
+    )
+
+    assert "$" not in html
+    assert "x<sup>2</sup>" in html
+    assert "&gamma;<sub>3</sub>" in html
+
+
+def test_build_note_html_renders_more_latex_symbols() -> None:
+    html = build_note_html(
+        PDFExportPayload(
+            title="Symbole",
+            content=r"$\mathbb{R}, \mathbb N, \langle x, y \rangle, \{a,b\}, \|x - y\|$",
+        )
+    )
+
+    assert r"\mathbb" not in html
+    assert r"\rangle" not in html
+    assert r"\{" not in html
+    assert r"\|" not in html
+    assert "ℝ" in html
+    assert "ℕ" in html
+    assert "⟨ x, y ⟩" in html
+    assert "{a,b}" in html
+    assert "‖x - y‖" in html
+
+
+def test_build_note_html_cleans_unknown_latex_commands() -> None:
+    html = build_note_html(
+        PDFExportPayload(
+            title="Fallback",
+            content=r"$\sqrt{x^2} + \operatorname{span}(v) + \unknown{ABC} + \mystery$",
+        )
+    )
+
+    assert "\\" not in html
+    assert "√(x<sup>2</sup>)" in html
+    assert "span(v)" in html
+    assert "ABC" in html
+    assert "mystery" in html
+
+
+def test_build_note_html_renders_parenthesized_powers_and_subscripts() -> None:
+    html = build_note_html(
+        PDFExportPayload(
+            title="Indeksy",
+            content=r"$e^(2t) + C_3 + a_(n+1)$",
+        )
+    )
+
+    assert "e<sup>2t</sup>" in html
+    assert "C<sub>3</sub>" in html
+    assert "a<sub>n+1</sub>" in html
 
 
 def test_build_note_html_uses_rich_text_content_when_provided() -> None:
@@ -99,6 +192,17 @@ def test_convert_note_content_to_editor_html_replaces_heading_tags() -> None:
     assert "font-size: 15pt" in editor_html
     assert "Tytuł" in editor_html
     assert "Akapit" in editor_html
+
+
+def test_convert_note_content_to_editor_html_renders_latex_math() -> None:
+    editor_html = convert_note_content_to_editor_html(
+        r"$\frac{dy}{1} = \frac{dz}{3y^2} = \frac{dx}{0}$",
+        "plain",
+    )
+
+    assert r"\frac" not in editor_html
+    assert "&frasl;" in editor_html
+    assert "3y<sup>2</sup>" in editor_html
 
 
 def test_export_note_to_pdf_uses_document_and_printer_factories(tmp_path: Path) -> None:

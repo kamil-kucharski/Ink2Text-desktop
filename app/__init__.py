@@ -1,2 +1,1 @@
-"""Pakiet główny aplikacji Notatki AI Desktop."""
-
+"""Pakiet główny aplikacji Ink2Text."""

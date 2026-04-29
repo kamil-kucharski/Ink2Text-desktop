@@ -20,7 +20,6 @@ def build_note_html(payload: PDFExportPayload) -> str:
         body_html = convert_note_content_to_html(payload.content_html, "html")
     else:
         body_html = convert_note_content_to_html(payload.content, "plain")
-    title_html = _build_title_html(payload.title)
 
     return f"""<!DOCTYPE html>
 <html lang="pl">
@@ -33,13 +32,6 @@ def build_note_html(payload: PDFExportPayload) -> str:
         margin: 42px 48px;
         line-height: 1.6;
         font-size: 12pt;
-      }}
-      .note-title {{
-        font-size: 26px;
-        margin: 0 0 24px 0;
-        border-bottom: 1px solid #d9dee3;
-        padding-bottom: 14px;
-        color: #111827;
       }}
       h1 {{
         font-size: 22px;
@@ -100,10 +92,16 @@ def build_note_html(payload: PDFExportPayload) -> str:
       .math-inline {{
         font-family: "DejaVu Serif", "Times New Roman", serif;
       }}
+      .math-frac {{
+        white-space: nowrap;
+      }}
+      .math-frac sup,
+      .math-frac sub {{
+        font-size: 75%;
+      }}
     </style>
   </head>
   <body>
-    {title_html}
     {body_html}
   </body>
 </html>
@@ -135,7 +133,7 @@ def export_note_to_pdf(
     writer = effective_pdf_writer_factory(str(pdf_path))
     writer.setResolution(300)
     writer.setTitle(payload.title.strip() or "Bez tytułu")
-    writer.setCreator("Notatki AI Desktop")
+    writer.setCreator("Ink2Text")
     margins = QtCore.QMarginsF(16, 16, 16, 16)
     writer.setPageMargins(margins, QtGui.QPageLayout.Unit.Millimeter)
 
@@ -177,6 +175,11 @@ def _plain_text_to_html(content: str) -> str:
         stripped = line.strip()
 
         if not stripped:
+            flush_paragraph()
+            flush_list()
+            continue
+
+        if _is_markdown_separator(stripped):
             flush_paragraph()
             flush_list()
             continue
@@ -223,14 +226,14 @@ def convert_note_content_to_html(content: str, content_format: str) -> str:
         return "<p></p>"
 
     if content_format == "html":
-        return _extract_body_html(content)
+        return _render_math_in_html(_remove_separator_html(_extract_body_html(content)))
 
     return _plain_text_to_html(content)
 
 
 def convert_note_content_to_editor_html(content: str, content_format: str) -> str:
     if content_format == "html":
-        body_html = _extract_body_html(content)
+        body_html = _render_math_in_html(_extract_body_html(content))
     else:
         body_html = _plain_text_to_html(content)
 
@@ -308,14 +311,6 @@ def _extract_heading(line: str) -> tuple[int, str] | None:
     return level, text
 
 
-def _build_title_html(title: str) -> str:
-    cleaned_title = title.strip()
-    if not cleaned_title or re.fullmatch(r"Notatka\s+\d+", cleaned_title, flags=re.IGNORECASE):
-        return ""
-
-    return f'<div class="note-title">{escape(cleaned_title)}</div>'
-
-
 def _render_inline_formatting(text: str) -> str:
     escaped = escape(text)
     escaped = re.sub(r"\$([^$]+)\$", lambda match: _render_inline_math(match.group(1)), escaped)
@@ -328,35 +323,325 @@ def _render_inline_formatting(text: str) -> str:
 
 
 def _render_inline_math(expression: str) -> str:
+    rendered = _render_math_expression(expression.strip())
+    return f'<span class="math-inline">{rendered}</span>'
+
+
+def _render_math_expression(expression: str) -> str:
+    rendered = _render_math_alphabets(expression)
+    rendered = _render_fractions(rendered)
+    rendered = _render_roots(rendered)
+    rendered = _render_text_commands(rendered)
+    rendered = _render_scripts(rendered)
+    rendered = _replace_latex_symbols(rendered)
+    rendered = _cleanup_latex_spacing(rendered)
+    rendered = _cleanup_unknown_latex(rendered)
+    return rendered
+
+
+def _render_math_fragment(expression: str) -> str:
+    rendered = _render_math_alphabets(expression.strip())
+    rendered = _render_roots(rendered)
+    rendered = _render_text_commands(rendered)
+    rendered = _render_scripts(rendered)
+    rendered = _replace_latex_symbols(rendered)
+    rendered = _cleanup_latex_spacing(rendered)
+    rendered = _cleanup_unknown_latex(rendered)
+    return rendered
+
+
+def _render_math_alphabets(expression: str) -> str:
+    blackboard_bold = {
+        "A": "𝔸",
+        "B": "𝔹",
+        "C": "ℂ",
+        "D": "𝔻",
+        "E": "𝔼",
+        "F": "𝔽",
+        "G": "𝔾",
+        "H": "ℍ",
+        "I": "𝕀",
+        "J": "𝕁",
+        "K": "𝕂",
+        "L": "𝕃",
+        "M": "𝕄",
+        "N": "ℕ",
+        "O": "𝕆",
+        "P": "ℙ",
+        "Q": "ℚ",
+        "R": "ℝ",
+        "S": "𝕊",
+        "T": "𝕋",
+        "U": "𝕌",
+        "V": "𝕍",
+        "W": "𝕎",
+        "X": "𝕏",
+        "Y": "𝕐",
+        "Z": "ℤ",
+    }
+
+    def replace_braced(match: re.Match[str]) -> str:
+        return "".join(blackboard_bold.get(char, char) for char in match.group(1))
+
+    def replace_single(match: re.Match[str]) -> str:
+        return blackboard_bold.get(match.group(1), match.group(1))
+
+    rendered = re.sub(r"\\mathbb\{([^{}]+)\}", replace_braced, expression)
+    rendered = re.sub(r"\\mathbb\s+([A-Za-z])", replace_single, rendered)
+    return rendered
+
+
+def _render_roots(expression: str) -> str:
+    rendered = re.sub(
+        r"\\sqrt\[([^{}\[\]]+)\]\{([^{}]+)\}",
+        lambda match: f'<sup>{_render_math_fragment(match.group(1))}</sup>√({_render_math_fragment(match.group(2))})',
+        expression,
+    )
+    return re.sub(
+        r"\\sqrt\{([^{}]+)\}",
+        lambda match: f"√({_render_math_fragment(match.group(1))})",
+        rendered,
+    )
+
+
+def _render_text_commands(expression: str) -> str:
+    commands = (
+        "text",
+        "textrm",
+        "textit",
+        "textbf",
+        "mathrm",
+        "mathbf",
+        "mathit",
+        "mathsf",
+        "mathtt",
+        "operatorname",
+        "overline",
+        "underline",
+        "hat",
+        "bar",
+        "vec",
+        "tilde",
+    )
+    command_pattern = "|".join(commands)
+    return re.sub(
+        rf"\\(?:{command_pattern})\{{([^{{}}]+)\}}",
+        lambda match: _render_math_fragment(match.group(1)),
+        expression,
+    )
+
+
+def _render_fractions(expression: str) -> str:
+    pattern = re.compile(r"\\(?:frac|dfrac|tfrac)\{([^{}]*)\}\{([^{}]*)\}")
+
+    def replace_fraction(match: re.Match[str]) -> str:
+        numerator = _render_math_fragment(match.group(1))
+        denominator = _render_math_fragment(match.group(2))
+        return (
+            '<span class="math-frac" style="white-space: nowrap;">'
+            f'<sup style="font-size: 75%;">{numerator}</sup>'
+            "&frasl;"
+            f'<sub style="font-size: 75%;">{denominator}</sub>'
+            "</span>"
+        )
+
+    previous = None
+    rendered = expression
+    while rendered != previous:
+        previous = rendered
+        rendered = pattern.sub(replace_fraction, rendered)
+    return rendered
+
+
+def _render_scripts(expression: str) -> str:
+    token = r"(\\[A-Za-z]+|[A-Za-z0-9Α-ω\)\]])"
+
+    def replace_superscript(match: re.Match[str]) -> str:
+        base = _replace_latex_symbols(match.group(1))
+        exponent = _replace_latex_symbols(match.group(2).strip())
+        return f"{base}<sup>{exponent}</sup>"
+
+    def replace_subscript(match: re.Match[str]) -> str:
+        base = _replace_latex_symbols(match.group(1))
+        index = _replace_latex_symbols(match.group(2).strip())
+        return f"{base}<sub>{index}</sub>"
+
+    rendered = re.sub(rf"{token}\^\{{([^{{}}]+)\}}", replace_superscript, expression)
+    rendered = re.sub(rf"{token}\^\(([^()]+)\)", replace_superscript, rendered)
+    rendered = re.sub(rf"{token}\^([A-Za-z0-9+\-=])", replace_superscript, rendered)
+    rendered = re.sub(rf"{token}_\{{([^{{}}]+)\}}", replace_subscript, rendered)
+    rendered = re.sub(rf"{token}_\(([^()]+)\)", replace_subscript, rendered)
+    rendered = re.sub(rf"{token}_([A-Za-z0-9+\-=])", replace_subscript, rendered)
+    rendered = re.sub(rf"{token}_(?:&#x27;|&quot;|&apos;)([A-Za-z0-9+\-=]+)(?:&#x27;|&quot;|&apos;)", replace_subscript, rendered)
+    return rendered
+
+
+def _replace_latex_symbols(expression: str) -> str:
     replacements = {
+        r"\sin": "sin",
+        r"\cos": "cos",
+        r"\tan": "tan",
+        r"\cot": "cot",
+        r"\sec": "sec",
+        r"\csc": "csc",
+        r"\log": "log",
+        r"\ln": "ln",
+        r"\lim": "lim",
+        r"\min": "min",
+        r"\max": "max",
+        r"\sup": "sup",
+        r"\inf": "inf",
+        r"\deg": "deg",
+        r"\det": "det",
         r"\to": "&rarr;",
         r"\rightarrow": "&rarr;",
         r"\leftarrow": "&larr;",
+        r"\leftrightarrow": "&harr;",
+        r"\mapsto": "↦",
         r"\Rightarrow": "&rArr;",
         r"\Leftarrow": "&lArr;",
-        r"\leftrightarrow": "&harr;",
+        r"\Leftrightarrow": "&hArr;",
+        r"\langle": "⟨",
+        r"\rangle": "⟩",
+        r"\lceil": "⌈",
+        r"\rceil": "⌉",
+        r"\lfloor": "⌊",
+        r"\rfloor": "⌋",
+        r"\lVert": "‖",
+        r"\rVert": "‖",
+        r"\Vert": "‖",
+        r"\|": "‖",
+        r"\{": "__MATH_LBRACE__",
+        r"\}": "__MATH_RBRACE__",
         r"\geq": "&ge;",
+        r"\ge": "&ge;",
         r"\leq": "&le;",
+        r"\le": "&le;",
         r"\neq": "&ne;",
+        r"\ne": "&ne;",
+        r"\equiv": "&equiv;",
+        r"\sim": "&sim;",
+        r"\simeq": "&simeq;",
+        r"\cong": "&cong;",
         r"\times": "&times;",
         r"\cdot": "&middot;",
+        r"\div": "&divide;",
         r"\pm": "&plusmn;",
+        r"\mp": "&#8723;",
         r"\approx": "&asymp;",
         r"\infty": "&infin;",
+        r"\sqrt": "&radic;",
+        r"\sum": "&sum;",
+        r"\prod": "&prod;",
+        r"\int": "&int;",
+        r"\partial": "&part;",
+        r"\nabla": "&nabla;",
+        r"\in": "&isin;",
+        r"\notin": "&notin;",
+        r"\subset": "&sub;",
+        r"\subseteq": "&sube;",
+        r"\supset": "&sup;",
+        r"\supseteq": "&supe;",
+        r"\cup": "&cup;",
+        r"\cap": "&cap;",
+        r"\emptyset": "&empty;",
+        r"\forall": "&forall;",
+        r"\exists": "&exist;",
+        r"\neg": "&not;",
+        r"\land": "&and;",
+        r"\wedge": "&and;",
+        r"\lor": "&or;",
+        r"\vee": "&or;",
         r"\alpha": "&alpha;",
         r"\beta": "&beta;",
         r"\gamma": "&gamma;",
         r"\delta": "&delta;",
+        r"\epsilon": "&epsilon;",
+        r"\varepsilon": "&epsilon;",
+        r"\zeta": "&zeta;",
+        r"\eta": "&eta;",
+        r"\theta": "&theta;",
+        r"\vartheta": "&theta;",
+        r"\iota": "&iota;",
+        r"\kappa": "&kappa;",
         r"\lambda": "&lambda;",
         r"\mu": "&mu;",
+        r"\nu": "&nu;",
+        r"\xi": "&xi;",
+        r"\omicron": "&omicron;",
         r"\pi": "&pi;",
+        r"\rho": "&rho;",
         r"\sigma": "&sigma;",
-        r"\theta": "&theta;",
+        r"\tau": "&tau;",
+        r"\upsilon": "&upsilon;",
+        r"\phi": "&phi;",
+        r"\varphi": "&phi;",
+        r"\chi": "&chi;",
+        r"\psi": "&psi;",
         r"\omega": "&omega;",
+        r"\Gamma": "&Gamma;",
+        r"\Delta": "&Delta;",
+        r"\Theta": "&Theta;",
+        r"\Lambda": "&Lambda;",
+        r"\Xi": "&Xi;",
+        r"\Pi": "&Pi;",
+        r"\Sigma": "&Sigma;",
+        r"\Phi": "&Phi;",
+        r"\Psi": "&Psi;",
+        r"\Omega": "&Omega;",
     }
 
-    rendered = expression.strip()
-    for source, target in replacements.items():
-        rendered = rendered.replace(source, target)
+    rendered = expression
+    for source in sorted(replacements, key=len, reverse=True):
+        rendered = rendered.replace(source, replacements[source])
+    return rendered
 
-    return f'<span class="math-inline">{rendered}</span>'
+
+def _cleanup_latex_spacing(expression: str) -> str:
+    rendered = expression
+    spacing = {
+        r"\,": " ",
+        r"\;": " ",
+        r"\:": " ",
+        r"\!": "",
+        r"\ ": " ",
+        "~": " ",
+    }
+    for source, target in spacing.items():
+        rendered = rendered.replace(source, target)
+    rendered = rendered.replace(r"\left", "").replace(r"\right", "")
+    return rendered
+
+
+def _cleanup_unknown_latex(expression: str) -> str:
+    rendered = expression
+    rendered = re.sub(r"\\([{}#$%&_])", r"\1", rendered)
+    rendered = rendered.replace(r"\\", " ")
+    rendered = re.sub(
+        r"\\[A-Za-z]+\{([^{}]*)\}",
+        lambda match: _render_math_fragment(match.group(1)),
+        rendered,
+    )
+    rendered = re.sub(r"\\([A-Za-z]+)", r"\1", rendered)
+    rendered = rendered.replace("{", "").replace("}", "")
+    rendered = rendered.replace("__MATH_LBRACE__", "{").replace("__MATH_RBRACE__", "}")
+    rendered = re.sub(r"\s{2,}", " ", rendered)
+    return rendered.strip()
+
+
+def _render_math_in_html(html: str) -> str:
+    return re.sub(r"\$([^$]+)\$", lambda match: _render_inline_math(match.group(1)), html)
+
+
+def _is_markdown_separator(line: str) -> bool:
+    return bool(re.fullmatch(r"(?:-{3,}|\*{3,}|_{3,})", line.strip()))
+
+
+def _remove_separator_html(html: str) -> str:
+    html = re.sub(r"<hr\s*/?>", "", html, flags=re.IGNORECASE)
+    return re.sub(
+        r"<p[^>]*>\s*(?:-{3,}|\*{3,}|_{3,})\s*</p>",
+        "",
+        html,
+        flags=re.IGNORECASE,
+    )

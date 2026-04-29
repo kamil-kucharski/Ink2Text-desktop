@@ -1,9 +1,22 @@
 from __future__ import annotations
 
 import sys
+import os
+
+
+def _prefer_stable_linux_qt_backend() -> None:
+    if not sys.platform.startswith("linux"):
+        return
+
+    # If a previous shell command exported xcb, Qt can abort before the app opens
+    # when the system xcb dependencies are incomplete. Prefer Wayland by default.
+    if os.environ.get("QT_QPA_PLATFORM") == "xcb" and os.environ.get("AI_NOTE_STUDIO_USE_XCB") != "1":
+        os.environ.pop("QT_QPA_PLATFORM", None)
 
 
 def main() -> int:
+    _prefer_stable_linux_qt_backend()
+
     try:
         from PySide6 import QtWidgets
     except ModuleNotFoundError:
@@ -17,7 +30,7 @@ def main() -> int:
     from app.ui.theme import apply_theme
 
     application = QtWidgets.QApplication(sys.argv)
-    application.setApplicationName("Notatki AI Desktop")
+    application.setApplicationName("Ink2Text")
     apply_theme(application)
 
     repository = FileNoteRepository()
@@ -34,6 +47,15 @@ def main() -> int:
         ai_provider=ai_provider,
         app_config=app_config,
     )
+    if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
+        screen = application.primaryScreen()
+        if screen is not None:
+            available_height = screen.availableGeometry().height()
+            if available_height > 0:
+                max_height = max(720, available_height - 48)
+                if window.minimumHeight() > max_height:
+                    window.setMinimumHeight(max_height)
+                window.setMaximumHeight(max_height)
     window.show()
     return application.exec()
 
