@@ -13,9 +13,7 @@ from app.services import (
     GeminiAIProvider,
     ImagePreparationService,
     PDFExportPayload,
-    TRANSCRIPTION_MODE_LABELS,
     TranscriptionResult,
-    convert_note_content_to_html,
     convert_note_content_to_editor_html,
     export_note_to_pdf,
 )
@@ -24,6 +22,7 @@ from app.ui.image_import import filter_supported_image_paths
 from app.ui.i18n import translate
 from app.ui.menu_select import MenuSelectButton
 from app.ui.settings_dialog import AISettingsDialog
+from app.ui.theme import apply_card_shadow
 
 
 class AITranscriptionWorker(QtCore.QObject):
@@ -87,48 +86,149 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_ui(self) -> None:
         central_widget = QtWidgets.QWidget()
+        central_widget.setObjectName("AppRoot")
         root_layout = QtWidgets.QVBoxLayout(central_widget)
+        root_layout.setContentsMargins(24, 22, 24, 20)
+        root_layout.setSpacing(18)
 
-        button_row = QtWidgets.QHBoxLayout()
+        self.header_card = QtWidgets.QFrame()
+        self.header_card.setObjectName("HeaderBar")
+        header_layout = QtWidgets.QVBoxLayout(self.header_card)
+        header_layout.setContentsMargins(22, 18, 22, 18)
+        header_layout.setSpacing(14)
+
+        self.header_eyebrow = QtWidgets.QLabel()
+        self.header_eyebrow.setObjectName("HeaderEyebrow")
+        self.hero_title = QtWidgets.QLabel()
+        self.hero_title.setObjectName("HeroTitle")
+        self.hero_subtitle = QtWidgets.QLabel()
+        self.hero_subtitle.setObjectName("HeroSubtitle")
+        self.hero_subtitle.setWordWrap(True)
+        self.note_count_badge = QtWidgets.QLabel()
+        self.note_count_badge.setObjectName("CountBadge")
+        self.note_count_badge.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        hero_top_row = QtWidgets.QHBoxLayout()
+        hero_top_row.setSpacing(14)
+        hero_text_layout = QtWidgets.QVBoxLayout()
+        hero_text_layout.setSpacing(4)
+        hero_text_layout.addWidget(self.header_eyebrow)
+        hero_text_layout.addWidget(self.hero_title)
+        hero_text_layout.addWidget(self.hero_subtitle)
+        utility_layout = QtWidgets.QHBoxLayout()
+        utility_layout.setSpacing(10)
+        utility_layout.addStretch()
+        utility_layout.addWidget(self.note_count_badge, alignment=QtCore.Qt.AlignmentFlag.AlignTop)
+        hero_top_row.addLayout(hero_text_layout, stretch=1)
+        hero_top_row.addLayout(utility_layout)
+
+        action_layout = QtWidgets.QHBoxLayout()
+        action_layout.setSpacing(12)
+        left_action_group = QtWidgets.QHBoxLayout()
+        left_action_group.setSpacing(8)
+        right_action_group = QtWidgets.QHBoxLayout()
+        right_action_group.setSpacing(8)
         self.new_button = QtWidgets.QPushButton("Nowa notatka")
         self.save_button = QtWidgets.QPushButton("Zapisz")
+        self.delete_note_button = QtWidgets.QPushButton("Usuń notatkę")
         self.export_pdf_button = QtWidgets.QPushButton("Eksportuj PDF")
         self.refresh_button = QtWidgets.QPushButton("Odśwież")
         self.import_images_button = QtWidgets.QPushButton("Importuj zdjęcia")
         self.transcribe_ai_button = QtWidgets.QPushButton("Przetwórz przez AI")
         self.ai_settings_button = QtWidgets.QPushButton("Ustawienia AI")
         self.language_button = MenuSelectButton()
+        self.language_button.setObjectName("LanguageButton")
         self.language_button.addItem("Polski", "pl")
         self.language_button.addItem("English", "en")
         self.language_button.setCurrentData(self.app_language)
-        button_row.addWidget(self.new_button)
-        button_row.addWidget(self.export_pdf_button)
-        button_row.addWidget(self.save_button)
-        button_row.addWidget(self.refresh_button)
-        button_row.addWidget(self.import_images_button)
-        button_row.addWidget(self.transcribe_ai_button)
-        button_row.addWidget(self.ai_settings_button)
-        button_row.addWidget(self.language_button)
-        button_row.addStretch()
+        self.language_button.setMinimumWidth(126)
+        left_action_group.addWidget(self.new_button)
+        left_action_group.addWidget(self.save_button)
+        left_action_group.addWidget(self.export_pdf_button)
+        left_action_group.addWidget(self.delete_note_button)
+        right_action_group.addWidget(self.refresh_button)
+        right_action_group.addWidget(self.ai_settings_button)
+        right_action_group.addWidget(self.language_button)
+        action_layout.addLayout(left_action_group)
+        action_layout.addStretch()
+        action_layout.addLayout(right_action_group)
+
+        header_layout.addLayout(hero_top_row)
+        header_layout.addLayout(action_layout)
+
+        self.workspace_shell = QtWidgets.QFrame()
+        self.workspace_shell.setObjectName("WorkspaceShell")
+        workspace_layout = QtWidgets.QVBoxLayout(self.workspace_shell)
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(0)
 
         splitter = QtWidgets.QSplitter()
         splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(14)
 
-        left_panel = QtWidgets.QWidget()
+        left_panel = QtWidgets.QFrame()
+        left_panel.setObjectName("SidebarPane")
         left_layout = QtWidgets.QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(20, 20, 16, 20)
+        left_layout.setSpacing(12)
         self.saved_notes_label = QtWidgets.QLabel()
+        self.saved_notes_label.setObjectName("SectionLabel")
         left_layout.addWidget(self.saved_notes_label)
         self.note_list = QtWidgets.QListWidget()
+        self.note_list.setObjectName("NoteList")
         left_layout.addWidget(self.note_list)
 
-        right_panel = QtWidgets.QWidget()
+        right_panel = QtWidgets.QFrame()
+        right_panel.setObjectName("ContentPane")
         form_layout = QtWidgets.QVBoxLayout(right_panel)
+        form_layout.setContentsMargins(18, 20, 20, 20)
+        form_layout.setSpacing(14)
+
+        self.meta_section = QtWidgets.QFrame()
+        self.meta_section.setObjectName("MetaSection")
+        meta_layout = QtWidgets.QVBoxLayout(self.meta_section)
+        meta_layout.setContentsMargins(0, 0, 0, 0)
+        meta_layout.setSpacing(14)
+        title_row = QtWidgets.QHBoxLayout()
+        title_row.setSpacing(12)
+        title_text_layout = QtWidgets.QVBoxLayout()
+        title_text_layout.setSpacing(8)
         self.title_label = QtWidgets.QLabel()
-        form_layout.addWidget(self.title_label)
+        self.title_label.setObjectName("SectionLabel")
+        title_text_layout.addWidget(self.title_label)
         self.title_input = QtWidgets.QLineEdit()
-        form_layout.addWidget(self.title_input)
+        self.title_input.setObjectName("TitleInput")
+        title_text_layout.addWidget(self.title_input)
+        title_row.addLayout(title_text_layout, stretch=1)
+
+        mode_layout = QtWidgets.QVBoxLayout()
+        mode_layout.setSpacing(8)
+        self.transcription_mode_label = QtWidgets.QLabel()
+        self.transcription_mode_label.setObjectName("ModeInlineLabel")
+        mode_layout.addWidget(self.transcription_mode_label)
+        self.transcription_mode_input = MenuSelectButton()
+        self.transcription_mode_input.setObjectName("ModeButton")
+        self.transcription_mode_input.setMinimumWidth(240)
+        mode_layout.addWidget(self.transcription_mode_input)
+        title_row.addLayout(mode_layout)
+        meta_layout.addLayout(title_row)
+
+        quick_actions_row = QtWidgets.QHBoxLayout()
+        quick_actions_row.setSpacing(8)
+        quick_actions_row.addWidget(self.import_images_button)
+        quick_actions_row.addWidget(self.transcribe_ai_button)
+        quick_actions_row.addStretch()
+        meta_layout.addLayout(quick_actions_row)
+
+        self.images_section = QtWidgets.QFrame()
+        self.images_section.setObjectName("ImagesSection")
+        images_layout = QtWidgets.QVBoxLayout(self.images_section)
+        images_layout.setContentsMargins(0, 0, 0, 0)
+        images_layout.setSpacing(10)
         attachments_layout = QtWidgets.QHBoxLayout()
+        attachments_layout.setSpacing(8)
         self.attachments_header = QtWidgets.QLabel()
+        self.attachments_header.setObjectName("SectionLabel")
         self.move_image_earlier_button = QtWidgets.QPushButton("Wcześniej")
         self.move_image_later_button = QtWidgets.QPushButton("Później")
         self.remove_image_button = QtWidgets.QPushButton("Usuń zaznaczone zdjęcie")
@@ -137,9 +237,10 @@ class MainWindow(QtWidgets.QMainWindow):
         attachments_layout.addWidget(self.move_image_earlier_button)
         attachments_layout.addWidget(self.move_image_later_button)
         attachments_layout.addWidget(self.remove_image_button)
-        form_layout.addLayout(attachments_layout)
+        images_layout.addLayout(attachments_layout)
         image_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         image_splitter.setChildrenCollapsible(False)
+        image_splitter.setHandleWidth(10)
         self.image_list = QtWidgets.QListWidget()
         self.image_list.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
         self.image_list.setFlow(QtWidgets.QListView.Flow.LeftToRight)
@@ -149,48 +250,70 @@ class MainWindow(QtWidgets.QMainWindow):
         self.image_list.setIconSize(QtCore.QSize(96, 96))
         self.image_list.setGridSize(QtCore.QSize(132, 132))
         self.image_list.setSpacing(10)
+        self.image_list.setObjectName("ImageList")
         self.image_preview = QtWidgets.QLabel()
+        self.image_preview.setObjectName("ImagePreview")
         self.image_preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.image_preview.setMinimumHeight(220)
         self.image_preview.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
-        self.image_preview.setStyleSheet("background-color: #f4f4f4; color: #555;")
         image_splitter.addWidget(self.image_list)
         image_splitter.addWidget(self.image_preview)
         image_splitter.setStretchFactor(0, 1)
         image_splitter.setStretchFactor(1, 2)
-        form_layout.addWidget(image_splitter)
+        image_splitter.setSizes([340, 520])
+        images_layout.addWidget(image_splitter)
         self.drag_hint = QtWidgets.QLabel()
-        self.drag_hint.setStyleSheet("color: #666;")
-        form_layout.addWidget(self.drag_hint)
-        transcription_mode_layout = QtWidgets.QHBoxLayout()
-        self.transcription_mode_label = QtWidgets.QLabel()
-        transcription_mode_layout.addWidget(self.transcription_mode_label)
-        self.transcription_mode_input = MenuSelectButton()
-        self.transcription_mode_input.setMinimumWidth(220)
-        transcription_mode_layout.addWidget(self.transcription_mode_input)
-        transcription_mode_layout.addStretch()
-        form_layout.addLayout(transcription_mode_layout)
+        self.drag_hint.setObjectName("StatusPill")
+        images_layout.addWidget(self.drag_hint, alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
+
+        self.editor_section = QtWidgets.QFrame()
+        self.editor_section.setObjectName("EditorSection")
+        editor_layout = QtWidgets.QVBoxLayout(self.editor_section)
+        editor_layout.setContentsMargins(0, 0, 0, 0)
+        editor_layout.setSpacing(10)
         self._build_editor_toolbar()
-        form_layout.addWidget(self.editor_toolbar)
+        editor_layout.addWidget(self.editor_toolbar)
         self.content_input = QtWidgets.QTextEdit()
         self.content_input.setAcceptRichText(True)
-        self.content_input.setStyleSheet("background-color: white;")
-        form_layout.addWidget(self.content_input, stretch=1)
+        self.content_input.setObjectName("ContentEditor")
+        self.content_input.setMinimumHeight(360)
+        editor_layout.addWidget(self.content_input, stretch=1)
+
+        self.right_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+        self.right_splitter.setChildrenCollapsible(False)
+        self.right_splitter.setHandleWidth(12)
+        top_right_widget = QtWidgets.QWidget()
+        top_right_layout = QtWidgets.QVBoxLayout(top_right_widget)
+        top_right_layout.setContentsMargins(0, 0, 0, 0)
+        top_right_layout.setSpacing(18)
+        top_right_layout.addWidget(self.meta_section)
+        top_right_layout.addWidget(self.images_section, stretch=1)
+        self.right_splitter.addWidget(top_right_widget)
+        self.right_splitter.addWidget(self.editor_section)
+        self.right_splitter.setStretchFactor(0, 1)
+        self.right_splitter.setStretchFactor(1, 2)
+        self.right_splitter.setSizes([320, 430])
+        form_layout.addWidget(self.right_splitter, stretch=1)
 
         splitter.addWidget(left_panel)
         splitter.addWidget(right_panel)
         splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 3)
+        splitter.setStretchFactor(1, 4)
+        splitter.setSizes([300, 980])
 
-        root_layout.addLayout(button_row)
-        root_layout.addWidget(splitter, stretch=1)
+        workspace_layout.addWidget(splitter)
+
+        root_layout.addWidget(self.header_card)
+        root_layout.addWidget(self.workspace_shell, stretch=1)
 
         self.setCentralWidget(central_widget)
         self.statusBar().showMessage(self._tr("status_ready"))
+        self._apply_visual_treatment()
 
         self.new_button.clicked.connect(self._create_new_note)
         self.export_pdf_button.clicked.connect(self._export_current_note_to_pdf)
         self.save_button.clicked.connect(self._save_current_note)
+        self.delete_note_button.clicked.connect(self._delete_current_note)
         self.refresh_button.clicked.connect(self.refresh_notes)
         self.import_images_button.clicked.connect(self._import_images)
         self.transcribe_ai_button.clicked.connect(self._transcribe_current_note_with_ai)
@@ -206,6 +329,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_editor_toolbar(self) -> None:
         toolbar = QtWidgets.QToolBar("Formatowanie")
+        toolbar.setObjectName("EditorToolbar")
         toolbar.setMovable(False)
         toolbar.setFloatable(False)
         toolbar.setIconSize(QtCore.QSize(16, 16))
@@ -231,12 +355,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         toolbar.addSeparator()
         self.font_family_input = MenuSelectButton()
+        self.font_family_input.setObjectName("FontFamilyButton")
         self.font_family_input.setMinimumWidth(220)
         for family in QtGui.QFontDatabase.families():
             self.font_family_input.addItem(family, family)
         toolbar.addWidget(self.font_family_input)
 
         self.font_size_input = MenuSelectButton()
+        self.font_size_input.setObjectName("FontSizeButton")
         self.font_size_input.setMinimumWidth(72)
         for size in ("10", "11", "12", "13", "14", "16", "18", "20", "24", "28", "32"):
             self.font_size_input.addItem(size)
@@ -254,11 +380,37 @@ class MainWindow(QtWidgets.QMainWindow):
         self.font_family_input.currentTextChanged.connect(self._set_font_family)
         self.font_size_input.currentTextChanged.connect(self._set_font_size)
 
+    def _apply_visual_treatment(self) -> None:
+        button_variants = {
+            self.new_button: "subtle",
+            self.save_button: "subtle",
+            self.delete_note_button: "danger",
+            self.export_pdf_button: "subtle",
+            self.refresh_button: "subtle",
+            self.import_images_button: "subtle",
+            self.transcribe_ai_button: "primary",
+            self.ai_settings_button: "subtle",
+            self.move_image_earlier_button: "subtle",
+            self.move_image_later_button: "subtle",
+            self.remove_image_button: "danger",
+        }
+        for button, variant in button_variants.items():
+            button.setProperty("variant", variant)
+            button.style().unpolish(button)
+            button.style().polish(button)
+
+        for widget in (self.header_card, self.workspace_shell):
+            apply_card_shadow(widget)
+
     def _apply_translations(self) -> None:
         self.setWindowTitle(self._tr("app_title"))
+        self.header_eyebrow.setText(self._tr("hero_eyebrow"))
+        self.hero_title.setText(self._tr("hero_title"))
+        self.hero_subtitle.setText(self._tr("hero_subtitle"))
         self.new_button.setText(self._tr("button_new_note"))
         self.export_pdf_button.setText(self._tr("button_export_pdf"))
         self.save_button.setText(self._tr("button_save"))
+        self.delete_note_button.setText(self._tr("button_delete_note"))
         self.refresh_button.setText(self._tr("button_refresh"))
         self.import_images_button.setText(self._tr("button_import_images"))
         self.transcribe_ai_button.setText(self._tr("button_transcribe_ai"))
@@ -279,6 +431,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.numbered_list_action.setToolTip(self._tr("tooltip_numbered_list"))
         self._rebuild_language_button()
         self._rebuild_transcription_mode_button()
+        self._update_note_count_badge()
         if not self.image_list.selectedItems() and self.image_preview.pixmap() is None:
             self.image_preview.setText(self._tr("label_no_image_selected"))
 
@@ -328,6 +481,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _tr(self, key: str, **kwargs) -> str:
         return translate(self.app_language, key, **kwargs)
+
+    def _update_note_count_badge(self) -> None:
+        self.note_count_badge.setText(self._tr("notes_badge", count=self.note_list.count()))
 
     def _build_toolbar_icon(self, kind: str) -> QtGui.QIcon:
         pixmap = QtGui.QPixmap(18, 18)
@@ -461,6 +617,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.note_list.clear()
         notes = self.repository.list_notes()
         self._populate_note_list(notes)
+        self._update_note_count_badge()
         if selected_note_id is not None:
             self._select_note(selected_note_id)
         self.note_list.blockSignals(False)
@@ -516,6 +673,38 @@ class MainWindow(QtWidgets.QMainWindow):
         self.current_note = saved_note
         self.refresh_notes(selected_note_id=saved_note.id)
         self.statusBar().showMessage(self._tr("status_saved_note", title=saved_note.display_title))
+
+    def _delete_current_note(self) -> None:
+        if self.current_note is None:
+            return
+
+        note_title = self.current_note.display_title
+        if not self.repository.has_note(self.current_note.id):
+            self._create_new_note()
+            self.statusBar().showMessage(self._tr("status_cleared_draft"))
+            return
+
+        message_box = QtWidgets.QMessageBox(self)
+        message_box.setWindowTitle(self._tr("dialog_delete_note_title"))
+        message_box.setText(self._tr("dialog_delete_note_text", title=note_title))
+        delete_button = message_box.addButton(
+            self._tr("dialog_delete_note_confirm"),
+            QtWidgets.QMessageBox.ButtonRole.DestructiveRole,
+        )
+        cancel_button = message_box.addButton(
+            self._tr("dialog_cancel"),
+            QtWidgets.QMessageBox.ButtonRole.RejectRole,
+        )
+        message_box.exec()
+
+        if message_box.clickedButton() != delete_button or message_box.clickedButton() == cancel_button:
+            return
+
+        self.repository.delete(self.current_note.id)
+        self.current_note = None
+        self.refresh_notes()
+        self._create_new_note()
+        self.statusBar().showMessage(self._tr("status_deleted_note", title=note_title))
 
     def _select_note(self, note_id: str) -> None:
         for row in range(self.note_list.count()):

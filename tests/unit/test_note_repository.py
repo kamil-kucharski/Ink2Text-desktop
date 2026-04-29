@@ -99,3 +99,24 @@ def test_repository_does_not_move_image_outside_bounds(tmp_path: Path) -> None:
         "uploads/a.png",
         "uploads/b.png",
     ]
+
+
+def test_repository_deletes_note_and_related_directories(tmp_path: Path) -> None:
+    repository = FileNoteRepository(base_dir=tmp_path)
+    note = Note.create_empty()
+    note.title = "Do usunięcia"
+    repository.save(note)
+
+    note_upload_dir = repository.uploads_dir / note.id
+    note_upload_dir.mkdir(parents=True, exist_ok=True)
+    (note_upload_dir / "photo.jpg").write_bytes(b"image")
+
+    prepared_dir = repository.base_dir / "prepared" / note.id
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+    (prepared_dir / "prepared.jpg").write_bytes(b"prepared")
+
+    repository.delete(note.id)
+
+    assert not repository.has_note(note.id)
+    assert not note_upload_dir.exists()
+    assert not prepared_dir.exists()

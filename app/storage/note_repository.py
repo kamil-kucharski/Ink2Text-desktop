@@ -27,6 +27,9 @@ class FileNoteRepository:
             payload = json.load(file)
         return Note.from_dict(payload)
 
+    def has_note(self, note_id: str) -> bool:
+        return self._note_path(note_id).exists()
+
     def save(self, note: Note) -> Note:
         note.touch()
         note_path = self._note_path(note.id)
@@ -87,6 +90,19 @@ class FileNoteRepository:
         )
         self.save(note)
         return True
+
+    def delete(self, note_id: str) -> None:
+        note_path = self._note_path(note_id)
+        if note_path.exists():
+            note_path.unlink()
+
+        note_uploads_dir = self.uploads_dir / note_id
+        if note_uploads_dir.exists():
+            shutil.rmtree(note_uploads_dir)
+
+        prepared_dir = self.base_dir / "prepared" / note_id
+        if prepared_dir.exists():
+            shutil.rmtree(prepared_dir)
 
     def _note_path(self, note_id: str) -> Path:
         return self.notes_dir / f"{note_id}.json"

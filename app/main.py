@@ -14,9 +14,11 @@ def main() -> int:
     from app.services import GeminiAIProvider, ImagePreparationService
     from app.storage import FileNoteRepository
     from app.ui import MainWindow
+    from app.ui.theme import apply_theme
 
     application = QtWidgets.QApplication(sys.argv)
     application.setApplicationName("Notatki AI Desktop")
+    apply_theme(application)
 
     repository = FileNoteRepository()
     app_config = load_app_config(base_dir=repository.base_dir)
