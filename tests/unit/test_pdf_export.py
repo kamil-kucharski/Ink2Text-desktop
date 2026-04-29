@@ -189,7 +189,7 @@ def test_convert_note_content_to_editor_html_replaces_heading_tags() -> None:
     editor_html = convert_note_content_to_editor_html("### Tytuł\n\nAkapit", "plain")
 
     assert "<h3>" not in editor_html
-    assert "font-size: 15pt" in editor_html
+    assert "font-size: 12pt" in editor_html
     assert "Tytuł" in editor_html
     assert "Akapit" in editor_html
 
@@ -221,6 +221,6 @@ def test_export_note_to_pdf_uses_document_and_printer_factories(tmp_path: Path) 
 
     assert returned_path == pdf_path
     assert document.html
-    assert document.margin == 24
+    assert document.margin == 8
     assert isinstance(document.printed_with, FakePdfWriter)
     assert document.printed_with_legacy is None

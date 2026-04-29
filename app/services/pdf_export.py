@@ -29,52 +29,52 @@ def build_note_html(payload: PDFExportPayload) -> str:
       body {{
         font-family: "DejaVu Sans", Arial, sans-serif;
         color: #1b1f23;
-        margin: 42px 48px;
-        line-height: 1.6;
-        font-size: 12pt;
+        margin: 22px 24px;
+        line-height: 1.5;
+        font-size: 9.5pt;
       }}
       h1 {{
-        font-size: 22px;
-        margin: 28px 0 12px 0;
+        font-size: 15.5px;
+        margin: 18px 0 8px 0;
         color: #111827;
       }}
       h2 {{
-        font-size: 18px;
-        margin: 24px 0 10px 0;
+        font-size: 13.5px;
+        margin: 16px 0 7px 0;
         color: #1f2937;
       }}
       h3 {{
-        font-size: 15px;
-        margin: 20px 0 8px 0;
+        font-size: 12px;
+        margin: 14px 0 6px 0;
         color: #374151;
       }}
       h4 {{
-        font-size: 13px;
-        margin: 18px 0 8px 0;
+        font-size: 10.5px;
+        margin: 12px 0 5px 0;
         color: #4b5563;
       }}
       h5 {{
-        font-size: 12px;
-        margin: 16px 0 6px 0;
+        font-size: 9.5px;
+        margin: 10px 0 5px 0;
         color: #4b5563;
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }}
       h6 {{
-        font-size: 11px;
-        margin: 14px 0 6px 0;
+        font-size: 9px;
+        margin: 9px 0 4px 0;
         color: #6b7280;
         font-style: italic;
       }}
       p {{
-        margin: 0 0 12px 0;
+        margin: 0 0 8px 0;
       }}
       ul, ol {{
-        margin: 0 0 16px 20px;
-        padding-left: 18px;
+        margin: 0 0 10px 14px;
+        padding-left: 12px;
       }}
       li {{
-        margin-bottom: 6px;
+        margin-bottom: 3px;
       }}
       strong {{
         font-weight: 700;
@@ -128,13 +128,13 @@ def export_note_to_pdf(
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
     document = document_factory()
     document.setHtml(build_note_html(payload))
-    document.setDocumentMargin(24)
+    document.setDocumentMargin(8)
 
     writer = effective_pdf_writer_factory(str(pdf_path))
     writer.setResolution(300)
     writer.setTitle(payload.title.strip() or "Bez tytułu")
     writer.setCreator("Ink2Text")
-    margins = QtCore.QMarginsF(16, 16, 16, 16)
+    margins = QtCore.QMarginsF(10, 10, 10, 10)
     writer.setPageMargins(margins, QtGui.QPageLayout.Unit.Millimeter)
 
     print_method = getattr(document, "print_", None) or getattr(document, "print", None)
@@ -243,7 +243,7 @@ def convert_note_content_to_editor_html(content: str, content_format: str) -> st
   <head>
     <meta charset="utf-8" />
   </head>
-  <body style="font-family: 'DejaVu Sans'; font-size: 12pt; line-height: 1.45;">
+  <body style="font-family: 'DejaVu Sans'; font-size: 9.5pt; line-height: 1.45;">
     {editor_body}
   </body>
 </html>
@@ -277,12 +277,12 @@ def _extract_body_html(html: str) -> str:
 
 def _replace_heading_tags_for_editor(html: str) -> str:
     heading_styles = {
-        "1": "font-size: 22pt; font-weight: 700; margin: 18px 0 10px 0;",
-        "2": "font-size: 18pt; font-weight: 700; margin: 16px 0 8px 0;",
-        "3": "font-size: 15pt; font-weight: 700; margin: 14px 0 8px 0;",
-        "4": "font-size: 13pt; font-weight: 700; margin: 12px 0 6px 0;",
-        "5": "font-size: 12pt; font-weight: 700; margin: 10px 0 6px 0;",
-        "6": "font-size: 11pt; font-weight: 700; margin: 8px 0 6px 0;",
+        "1": "font-size: 15.5pt; font-weight: 700; margin: 14px 0 7px 0;",
+        "2": "font-size: 13.5pt; font-weight: 700; margin: 12px 0 6px 0;",
+        "3": "font-size: 12pt; font-weight: 700; margin: 10px 0 5px 0;",
+        "4": "font-size: 10.5pt; font-weight: 700; margin: 9px 0 5px 0;",
+        "5": "font-size: 9.5pt; font-weight: 700; margin: 8px 0 4px 0;",
+        "6": "font-size: 9pt; font-weight: 700; margin: 7px 0 4px 0;",
     }
 
     def replace_heading(match: re.Match[str]) -> str:
