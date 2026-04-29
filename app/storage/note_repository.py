@@ -72,5 +72,21 @@ class FileNoteRepository:
     def resolve_image_path(self, relative_path: str) -> Path:
         return self.base_dir / Path(relative_path)
 
+    def move_image(self, note: Note, relative_path: str, direction: int) -> bool:
+        if relative_path not in note.image_paths or direction == 0:
+            return False
+
+        source_index = note.image_paths.index(relative_path)
+        target_index = source_index + direction
+        if target_index < 0 or target_index >= len(note.image_paths):
+            return False
+
+        note.image_paths[source_index], note.image_paths[target_index] = (
+            note.image_paths[target_index],
+            note.image_paths[source_index],
+        )
+        self.save(note)
+        return True
+
     def _note_path(self, note_id: str) -> Path:
         return self.notes_dir / f"{note_id}.json"

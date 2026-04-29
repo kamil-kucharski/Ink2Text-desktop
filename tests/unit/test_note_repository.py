@@ -61,3 +61,39 @@ def test_repository_removes_image_from_note_and_disk(tmp_path: Path) -> None:
 
     assert note.image_paths == []
     assert not repository.resolve_image_path(imported[0]).exists()
+
+
+def test_repository_moves_image_within_note_order(tmp_path: Path) -> None:
+    repository = FileNoteRepository(base_dir=tmp_path)
+    note = Note.create_empty()
+    note.image_paths = [
+        "uploads/a.png",
+        "uploads/b.png",
+        "uploads/c.png",
+    ]
+
+    moved = repository.move_image(note, "uploads/b.png", -1)
+
+    assert moved is True
+    assert note.image_paths == [
+        "uploads/b.png",
+        "uploads/a.png",
+        "uploads/c.png",
+    ]
+
+
+def test_repository_does_not_move_image_outside_bounds(tmp_path: Path) -> None:
+    repository = FileNoteRepository(base_dir=tmp_path)
+    note = Note.create_empty()
+    note.image_paths = [
+        "uploads/a.png",
+        "uploads/b.png",
+    ]
+
+    moved = repository.move_image(note, "uploads/a.png", -1)
+
+    assert moved is False
+    assert note.image_paths == [
+        "uploads/a.png",
+        "uploads/b.png",
+    ]

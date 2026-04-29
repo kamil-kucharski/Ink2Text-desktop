@@ -6,14 +6,20 @@ from typing import Iterable
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.models import Note
+from app.services import ImagePreparationService
 from app.storage import FileNoteRepository
 from app.ui.image_import import filter_supported_image_paths
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, repository: FileNoteRepository) -> None:
+    def __init__(
+        self,
+        repository: FileNoteRepository,
+        image_preparation_service: ImagePreparationService,
+    ) -> None:
         super().__init__()
         self.repository = repository
+        self.image_preparation_service = image_preparation_service
         self.current_note: Note | None = None
 
         self.setWindowTitle("Notatki AI Desktop")
@@ -55,9 +61,15 @@ class MainWindow(QtWidgets.QMainWindow):
         form_layout.addWidget(self.title_input)
         attachments_layout = QtWidgets.QHBoxLayout()
         attachments_header = QtWidgets.QLabel("Zdjęcia")
+        self.move_image_earlier_button = QtWidgets.QPushButton("Wcześniej")
+        self.move_image_later_button = QtWidgets.QPushButton("Później")
+        self.prepare_images_button = QtWidgets.QPushButton("Przygotuj do AI")
         self.remove_image_button = QtWidgets.QPushButton("Usuń zaznaczone zdjęcie")
         attachments_layout.addWidget(attachments_header)
         attachments_layout.addStretch()
+        attachments_layout.addWidget(self.move_image_earlier_button)
+        attachments_layout.addWidget(self.move_image_later_button)
+        attachments_layout.addWidget(self.prepare_images_button)
         attachments_layout.addWidget(self.remove_image_button)
         form_layout.addLayout(attachments_layout)
         image_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
@@ -104,14 +116,33 @@ class MainWindow(QtWidgets.QMainWindow):
         self.save_button.clicked.connect(self._save_current_note)
         self.refresh_button.clicked.connect(self.refresh_notes)
         self.import_images_button.clicked.connect(self._import_images)
+        self.move_image_earlier_button.clicked.connect(lambda: self._move_selected_image(-1))
+        self.move_image_later_button.clicked.connect(lambda: self._move_selected_image(1))
+        self.prepare_images_button.clicked.connect(self._prepare_images_for_ai)
         self.remove_image_button.clicked.connect(self._remove_selected_image)
         self.note_list.itemSelectionChanged.connect(self._load_selected_note)
         self.image_list.itemSelectionChanged.connect(self._update_image_preview)
 
-    def refresh_notes(self) -> None:
+    def refresh_notes(self, selected_note_id: str | None = None) -> None:
+        if selected_note_id is None:
+            selected_items = self.note_list.selectedItems()
+            if selected_items:
+                selected_note_id = selected_items[0].data(QtCore.Qt.ItemDataRole.UserRole)
+            elif self.current_note is not None:
+                selected_note_id = self.current_note.id
+
+        self.note_list.blockSignals(True)
         self.note_list.clear()
         notes = self.repository.list_notes()
         self._populate_note_list(notes)
+        if selected_note_id is not None:
+            self._select_note(selected_note_id)
+        self.note_list.blockSignals(False)
+
+        if selected_note_id is not None and self._has_note_item(selected_note_id):
+            note = self.repository.get_note(selected_note_id)
+            self._display_note(note)
+
         note_count = len(notes)
         message = "Brak zapisanych notatek" if note_count == 0 else f"Znaleziono notatek: {note_count}"
         self.statusBar().showMessage(message)
@@ -125,10 +156,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _create_new_note(self) -> None:
         self.current_note = Note.create_empty()
-        self.title_input.setText(self.current_note.title)
-        self.content_input.setPlainText(self.current_note.content)
-        self._refresh_image_list()
+        self._display_note(self.current_note)
+        self.note_list.blockSignals(True)
         self.note_list.clearSelection()
+        self.note_list.blockSignals(False)
         self.statusBar().showMessage("Utworzono nową notatkę")
 
     def _load_selected_note(self) -> None:
@@ -141,10 +172,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         note = self.repository.get_note(note_id)
-        self.current_note = note
-        self.title_input.setText(note.title)
-        self.content_input.setPlainText(note.content)
-        self._refresh_image_list()
+        self._display_note(note)
         self.statusBar().showMessage(f"Wczytano notatkę: {note.display_title}")
 
     def _save_current_note(self) -> None:
@@ -153,8 +181,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._sync_form_to_current_note()
         saved_note = self.repository.save(self.current_note)
-        self.refresh_notes()
-        self._select_note(saved_note.id)
+        self.current_note = saved_note
+        self.refresh_notes(selected_note_id=saved_note.id)
         self.statusBar().showMessage(f"Zapisano notatkę: {saved_note.display_title}")
 
     def _select_note(self, note_id: str) -> None:
@@ -190,9 +218,64 @@ class MainWindow(QtWidgets.QMainWindow):
         relative_path = selected_items[0].data(QtCore.Qt.ItemDataRole.UserRole)
         self.repository.remove_image(self.current_note, relative_path)
         self._refresh_image_list()
-        self.refresh_notes()
-        self._select_note(self.current_note.id)
+        self.refresh_notes(selected_note_id=self.current_note.id)
         self.statusBar().showMessage("Usunięto zdjęcie z notatki")
+
+    def _move_selected_image(self, direction: int) -> None:
+        if self.current_note is None:
+            return
+
+        self._sync_form_to_current_note()
+        selected_items = self.image_list.selectedItems()
+        if not selected_items:
+            self.statusBar().showMessage("Najpierw zaznacz zdjęcie do przesunięcia")
+            return
+
+        relative_path = selected_items[0].data(QtCore.Qt.ItemDataRole.UserRole)
+        moved = self.repository.move_image(self.current_note, relative_path, direction)
+        if not moved:
+            self.statusBar().showMessage("Tego zdjęcia nie da się już bardziej przesunąć")
+            return
+
+        self._refresh_image_list()
+        self._select_image(relative_path)
+        self.refresh_notes(selected_note_id=self.current_note.id)
+        self.statusBar().showMessage("Zmieniono kolejność zdjęć")
+
+    def _prepare_images_for_ai(self) -> None:
+        if self.current_note is None:
+            return
+
+        self._sync_form_to_current_note()
+        if not self.current_note.image_paths:
+            self.statusBar().showMessage("Dodaj zdjęcia, zanim przygotujesz je do AI")
+            return
+
+        try:
+            prepared_images = self.image_preparation_service.prepare_note_images(
+                self.current_note,
+                self.repository,
+            )
+        except RuntimeError as error:
+            QtWidgets.QMessageBox.warning(self, "Brak zależności", str(error))
+            self.statusBar().showMessage("Nie udało się przygotować zdjęć")
+            return
+
+        if not prepared_images:
+            self.statusBar().showMessage("Nie udało się przygotować zdjęć")
+            return
+
+        output_dir = prepared_images[0].prepared_path.parent
+        summary_lines = [
+            f"Przygotowano zdjęć: {len(prepared_images)}",
+            f"Katalog wyjściowy: {output_dir}",
+        ]
+        QtWidgets.QMessageBox.information(
+            self,
+            "Zdjęcia gotowe do AI",
+            "\n".join(summary_lines),
+        )
+        self.statusBar().showMessage(f"Przygotowano zdjęć do AI: {len(prepared_images)}")
 
     def _refresh_image_list(self) -> None:
         self.image_list.clear()
@@ -298,8 +381,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_image_list()
         self._select_image(imported_paths[-1])
         self.statusBar().showMessage(f"Zaimportowano zdjęć: {len(imported_paths)}")
-        self.refresh_notes()
-        self._select_note(self.current_note.id)
+        self.refresh_notes(selected_note_id=self.current_note.id)
 
     def _extract_image_paths_from_mime_data(self, mime_data: QtCore.QMimeData) -> list[str]:
         if not mime_data.hasUrls():
@@ -319,3 +401,16 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.Qt.TransformationMode.SmoothTransformation,
         )
         return QtGui.QIcon(thumbnail)
+
+    def _display_note(self, note: Note) -> None:
+        self.current_note = note
+        self.title_input.setText(note.title)
+        self.content_input.setPlainText(note.content)
+        self._refresh_image_list()
+
+    def _has_note_item(self, note_id: str) -> bool:
+        for row in range(self.note_list.count()):
+            item = self.note_list.item(row)
+            if item.data(QtCore.Qt.ItemDataRole.UserRole) == note_id:
+                return True
+        return False
