@@ -359,6 +359,9 @@ class ImageListWidget(QtWidgets.QListWidget):
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self.setAcceptDrops(True)
+        self.viewport().setAcceptDrops(True)
+        self.setDragEnabled(False)
+        self.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.DropOnly)
         self.setDropIndicatorShown(True)
         self.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
 
@@ -418,6 +421,7 @@ class ImageThumbnailWidget(QtWidgets.QFrame):
     selectedRequested = QtCore.Signal(str)
     previewRequested = QtCore.Signal(str)
     removeRequested = QtCore.Signal(str)
+    reorderRequested = QtCore.Signal(str, str, bool)
 
     def __init__(self, relative_path: str, image_path: Path, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -427,6 +431,7 @@ class ImageThumbnailWidget(QtWidgets.QFrame):
         self._drag_started = False
         self.setObjectName("ImageThumbnailWidget")
         self.setMouseTracking(True)
+        self.setAcceptDrops(True)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(152, 116)
 
@@ -439,6 +444,7 @@ class ImageThumbnailWidget(QtWidgets.QFrame):
         self.image_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.image_label.setFixedSize(142, 106)
         self.image_label.setPixmap(self._thumbnail_pixmap())
+        self.image_label.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         self.trash_button = QtWidgets.QPushButton()
         self.trash_button.setObjectName("ThumbnailTrashButton")
@@ -513,6 +519,37 @@ class ImageThumbnailWidget(QtWidgets.QFrame):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+
+    def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
+        if self._drop_source_path(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event: QtGui.QDragMoveEvent) -> None:
+        if self._drop_source_path(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event: QtGui.QDropEvent) -> None:
+        source_path = self._drop_source_path(event.mimeData())
+        if not source_path:
+            event.ignore()
+            return
+
+        insert_after_target = event.position().x() > self.width() / 2
+        self.reorderRequested.emit(source_path, self.relative_path, insert_after_target)
+        event.acceptProposedAction()
+
+    def _drop_source_path(self, mime_data: QtCore.QMimeData) -> str | None:
+        if not mime_data.hasFormat(IMAGE_REORDER_MIME):
+            return None
+
+        source_path = bytes(mime_data.data(IMAGE_REORDER_MIME)).decode("utf-8")
+        if source_path == self.relative_path:
+            return None
+        return source_path
 
     def _thumbnail_pixmap(self) -> QtGui.QPixmap:
         pixmap = QtGui.QPixmap(str(self.image_path))
@@ -1068,18 +1105,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.attachments_header.setObjectName("CardTitle")
         self.import_images_button = QtWidgets.QPushButton("+")
         self.import_images_button.setObjectName("AddImageButton")
-        self.move_image_earlier_button = QtWidgets.QPushButton("‹")
-        self.move_image_earlier_button.setObjectName("IconButton")
-        self.move_image_later_button = QtWidgets.QPushButton("›")
-        self.move_image_later_button.setObjectName("IconButton")
-        self.image_count_label = QtWidgets.QLabel("0 / 0")
-        self.image_count_label.setObjectName("ImageCounter")
         photos_header.addWidget(self.attachments_header)
         photos_header.addWidget(self.import_images_button)
         photos_header.addStretch()
-        photos_header.addWidget(self.move_image_earlier_button)
-        photos_header.addWidget(self.image_count_label)
-        photos_header.addWidget(self.move_image_later_button)
         photos_layout.addLayout(photos_header)
 
         self.image_empty_label = QtWidgets.QLabel()
@@ -1088,7 +1116,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.image_empty_label.setWordWrap(True)
         photos_layout.addWidget(self.image_empty_label)
 
-        self.image_list = QtWidgets.QListWidget()
+        self.image_list = ImageListWidget()
         self.image_list.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
         self.image_list.setFlow(QtWidgets.QListView.Flow.LeftToRight)
         self.image_list.setWrapping(True)
@@ -1101,10 +1129,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.image_list.setMaximumHeight(134)
         photos_layout.addWidget(self.image_list)
 
+        photos_hint_row = QtWidgets.QHBoxLayout()
+        photos_hint_row.setContentsMargins(0, 0, 0, 0)
+        photos_hint_row.setSpacing(12)
         self.drag_hint = QtWidgets.QLabel()
         self.drag_hint.setObjectName("HelperText")
         self.drag_hint.setContentsMargins(0, 0, 0, 0)
-        photos_layout.addWidget(self.drag_hint)
+        self.image_order_hint = QtWidgets.QLabel()
+        self.image_order_hint.setObjectName("HelperText")
+        self.image_order_hint.setContentsMargins(0, 0, 0, 0)
+        self.image_order_hint.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        photos_hint_row.addWidget(self.image_order_hint)
+        photos_hint_row.addStretch()
+        photos_hint_row.addWidget(self.drag_hint)
+        photos_layout.addLayout(photos_hint_row)
 
         self.editor_section = QtWidgets.QFrame()
         self.editor_section.setObjectName("ContentCard")
@@ -1283,8 +1321,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.transcribe_ai_button.clicked.connect(self._transcribe_current_note_with_ai)
         self.sidebar_settings_button.clicked.connect(self._open_ai_settings)
         self.trash_button.clicked.connect(self._open_trash_dialog)
-        self.move_image_earlier_button.clicked.connect(lambda: self._move_selected_image(-1))
-        self.move_image_later_button.clicked.connect(lambda: self._move_selected_image(1))
         self.note_list.itemSelectionChanged.connect(self._load_selected_note)
         self.image_list.itemSelectionChanged.connect(self._update_image_counter)
         self.image_list.imageReorderRequested.connect(self._reorder_image_to_index)
@@ -1369,8 +1405,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.transcribe_ai_button: "primary",
             self.sidebar_settings_button: "link",
             self.trash_button: "link",
-            self.move_image_earlier_button: "subtle",
-            self.move_image_later_button: "subtle",
         }
         for button, variant in button_variants.items():
             button.setProperty("variant", variant)
@@ -1399,10 +1433,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.trash_button.setText(self._tr("sidebar_trash"))
         self.sidebar_settings_button.setText(self._tr("sidebar_settings"))
         self.attachments_header.setText(self._tr("label_images"))
-        self.move_image_earlier_button.setToolTip(self._tr("button_move_earlier"))
-        self.move_image_later_button.setToolTip(self._tr("button_move_later"))
         self.image_empty_label.setText(self._tr("label_no_images_added"))
         self.drag_hint.setText(self._tr("label_drag_hint"))
+        self.image_order_hint.setText(self._tr("label_image_order_hint"))
         self.editor_title_label.setText(self._tr("label_note_content"))
         self.content_input.setPlaceholderText(self._tr("placeholder_note_content"))
         self.assistant_title_label.setText(self._tr("assistant_title"))
@@ -1537,8 +1570,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_image_counter(self) -> None:
         total = self.image_list.count() if hasattr(self, "image_list") else 0
-        selected = self.image_list.currentRow() + 1 if total and self.image_list.currentRow() >= 0 else 0
-        self.image_count_label.setText(self._tr("image_counter", current=selected, total=total))
         for row in range(total):
             item = self.image_list.item(row)
             widget = self.image_list.itemWidget(item)
@@ -1560,20 +1591,26 @@ class MainWindow(QtWidgets.QMainWindow):
             self.info_created_value.setText(empty_value)
             self.info_updated_value.setText(empty_value)
         else:
-            self.info_created_value.setText(self._format_note_datetime(self.current_note.created_at))
-            self.info_updated_value.setText(self._format_note_datetime(self.current_note.updated_at))
+            self.info_created_value.setText(
+                self._format_note_datetime(self.current_note.created_at, include_time_for_past=False)
+            )
+            self.info_updated_value.setText(
+                self._format_note_datetime(self.current_note.updated_at, include_time_for_past=False)
+            )
 
         self._update_image_counter()
 
     def _mode_description(self, mode: str) -> str:
         return self._tr(f"mode_{mode}_description")
 
-    def _format_note_datetime(self, value) -> str:
+    def _format_note_datetime(self, value, *, include_time_for_past: bool = True) -> str:
         local_value = value.astimezone()
         today = datetime.now(local_value.tzinfo).date()
         if local_value.date() == today:
             prefix = "Dzisiaj" if self.app_language == "pl" else "Today"
             return f"{prefix}, {local_value.strftime('%H:%M')}"
+        if not include_time_for_past:
+            return local_value.strftime("%d.%m.%Y")
         return local_value.strftime("%d.%m.%Y, %H:%M")
 
     def _build_toolbar_icon(self, kind: str) -> QtGui.QIcon:
@@ -1914,6 +1951,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_notes(selected_note_id=self.current_note.id)
         self.statusBar().showMessage(self._tr("status_changed_image_order"))
 
+    def _reorder_image_near_target(
+        self, source_path: str, target_path: str, insert_after_target: bool
+    ) -> None:
+        if self.current_note is None:
+            return
+        if source_path not in self.current_note.image_paths or target_path not in self.current_note.image_paths:
+            return
+
+        image_paths = list(self.current_note.image_paths)
+        image_paths.remove(source_path)
+        target_index = image_paths.index(target_path)
+        insert_index = target_index + 1 if insert_after_target else target_index
+        self._reorder_image_to_index(source_path, insert_index)
+
     def _prepare_images_for_ai(self) -> None:
         if self.current_note is None:
             return
@@ -2113,6 +2164,7 @@ class MainWindow(QtWidgets.QMainWindow):
             widget.selectedRequested.connect(self._select_image)
             widget.previewRequested.connect(self._open_image_preview)
             widget.removeRequested.connect(self._remove_image_by_relative_path)
+            widget.reorderRequested.connect(self._reorder_image_near_target)
             self.image_list.setItemWidget(item, widget)
 
         self.image_empty_label.setVisible(self.image_list.count() == 0)
