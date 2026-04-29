@@ -14,41 +14,57 @@ DEFAULT_FALLBACK_MODELS = (
 )
 TRANSCRIPTION_MODE_LABELS = {
     "faithful": "Wierna transkrypcja",
-    "structured": "Uporządkowane notatki",
-    "polished": "Lekko poprawione formatowanie",
+    "formatted": "Formatowanie notatki",
+    "organized": "Uporządkowanie notatki",
+    "expanded": "Rozszerzenie notatki",
 }
 
 
 def build_transcription_prompt(mode: str = "faithful") -> str:
     common_rules = (
         "Zachowaj oryginalny język notatek.\n"
+        "Zwróć tekst wyłącznie w języku użytym na obrazie. Nie tłumacz notatki na inny język.\n"
         "Jeśli jakiś fragment jest nieczytelny, wpisz [nieczytelne].\n"
         "Zwróć wyłącznie gotową treść notatki bez komentarza wstępnego."
     )
 
     if mode == "faithful":
         return (
-            "Przepisz odręczne notatki z dostarczonych obrazów do czytelnego tekstu możliwie wiernie.\n"
-            "Zachowaj strukturę nagłówków, list wypunktowanych, list numerowanych i akapitów.\n"
+            "Przepisz odręczne notatki z dostarczonych obrazów możliwie wiernie, linia po linii.\n"
+            "Nie poprawiaj stylu, gramatyki, fleksji, szyku zdań ani błędów językowych.\n"
+            "Nie dodawaj nagłówków, list, punktowania, numerowania ani dodatkowego formatowania, jeśli nie wynika to wprost z obrazu.\n"
             "Nie dopisuj informacji, których nie ma na obrazach.\n"
             f"{common_rules}"
         )
 
-    if mode == "structured":
+    if mode == "formatted":
         return (
-            "Przepisz odręczne notatki i uporządkuj je w przejrzystą strukturę.\n"
-            "Twórz czytelne nagłówki, podpunkty i krótkie listy, gdy pomagają zrozumieć materiał.\n"
-            "Zachowaj sens i wszystkie informacje z notatek, ale możesz poprawić kolejność i układ treści.\n"
-            "Nie wymyślaj nowych informacji.\n"
+            "Przepisz odręczne notatki i skup się na ich estetycznym sformatowaniu.\n"
+            "Dodawaj nagłówki, listy wypunktowane, listy numerowane i logiczne akapity, jeśli poprawiają czytelność.\n"
+            "Nie zmieniaj sensu tekstu i nie dopisuj nowych informacji merytorycznych.\n"
+            "Możesz jedynie uporządkować układ wizualny treści, aby notatka wyglądała ładnie i przejrzyście.\n"
             f"{common_rules}"
         )
 
-    if mode == "polished":
+    if mode == "organized":
         return (
-            "Przepisz odręczne notatki do czytelnej, lekko dopracowanej formy.\n"
-            "Popraw drobne potknięcia stylistyczne, uprość układ i zadbaj o ładne formatowanie.\n"
-            "Nie zmieniaj znaczenia treści i nie dodawaj nowych informacji.\n"
-            "Zachowaj ważne nagłówki, listy i logiczny podział na sekcje.\n"
+            "Przepisz odręczne notatki i uporządkuj je w estetyczną, przejrzystą formę.\n"
+            "Dodawaj sensowne nagłówki, listy, podpunkty i logiczny podział na sekcje.\n"
+            "Poprawiaj błędy stylistyczne, odmianę wyrazów, końcówki i drobne braki językowe, jeśli wynikają jednoznacznie z kontekstu.\n"
+            "Możesz uzupełnić pojedyncze brakujące słowo lub krótki fragment tylko wtedy, gdy jest bardzo prawdopodobny i nie zmienia sensu.\n"
+            "Nie halucynuj, nie wymyślaj faktów i nie dodawaj nowych informacji merytorycznych spoza notatki.\n"
+            f"{common_rules}"
+        )
+
+    if mode == "expanded":
+        return (
+            "Przepisz odręczne notatki, uporządkuj je i estetycznie sformatuj.\n"
+            "Dodawaj sensowne nagłówki, listy, podpunkty i logiczny podział na sekcje.\n"
+            "Poprawiaj błędy stylistyczne, odmianę wyrazów, końcówki i drobne braki językowe, jeśli wynikają jednoznacznie z kontekstu.\n"
+            "Dodatkowo możesz rozszerzyć notatkę o pomocne wyjaśnienia lub brakujące informacje merytoryczne tylko wtedy, gdy są bezpośrednio związane z tematem notatki i realnie zwiększają jej wartość.\n"
+            "Każde rozszerzenie musi zachowywać sens oryginału, nie może zawierać halucynacji ani nieprawdziwych informacji.\n"
+            "Łączna długość dopisanego przez Ciebie tekstu nie może przekroczyć 50% długości treści wynikającej z oryginalnej notatki.\n"
+            "Jeśli nie masz wysokiej pewności, nie dopisuj nowych informacji.\n"
             f"{common_rules}"
         )
 

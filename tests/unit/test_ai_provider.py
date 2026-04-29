@@ -56,7 +56,9 @@ class FakeClient:
 def test_build_transcription_prompt_contains_required_rules() -> None:
     prompt = build_transcription_prompt("faithful")
 
-    assert "Zachowaj strukturę nagłówków" in prompt
+    assert "Nie poprawiaj stylu" in prompt
+    assert "Nie dodawaj nagłówków" in prompt
+    assert "Nie tłumacz notatki na inny język" in prompt
     assert "[nieczytelne]" in prompt
     assert "Nie dopisuj informacji" in prompt
 
@@ -66,6 +68,28 @@ def test_build_transcription_prompt_supports_all_declared_modes() -> None:
         prompt = build_transcription_prompt(mode)
         assert isinstance(prompt, str)
         assert "[nieczytelne]" in prompt
+
+
+def test_build_transcription_prompt_for_formatted_mode_emphasizes_visual_formatting() -> None:
+    prompt = build_transcription_prompt("formatted")
+
+    assert "estetycznym sformatowaniu" in prompt
+    assert "Nie zmieniaj sensu tekstu" in prompt
+
+
+def test_build_transcription_prompt_for_organized_mode_allows_style_cleanup_without_new_facts() -> None:
+    prompt = build_transcription_prompt("organized")
+
+    assert "Poprawiaj błędy stylistyczne" in prompt
+    assert "Nie halucynuj" in prompt
+    assert "nie dodawaj nowych informacji merytorycznych" in prompt
+
+
+def test_build_transcription_prompt_for_expanded_mode_limits_added_content() -> None:
+    prompt = build_transcription_prompt("expanded")
+
+    assert "Łączna długość dopisanego przez Ciebie tekstu nie może przekroczyć 50%" in prompt
+    assert "Jeśli nie masz wysokiej pewności, nie dopisuj nowych informacji" in prompt
 
 
 def test_gemini_provider_requires_api_key() -> None:
@@ -88,15 +112,16 @@ def test_gemini_provider_builds_request_with_images_and_prompt(tmp_path: Path) -
     provider._create_client = lambda: fake_client
     provider._load_sdk = lambda: (None, FakeTypesModule)
 
-    result = provider.transcribe_images([image_path], transcription_mode="structured")
+    result = provider.transcribe_images([image_path], transcription_mode="organized")
 
     assert result.text == "Przepisana notatka"
     assert result.model_name == "gemini-test"
-    assert result.transcription_mode == "structured"
+    assert result.transcription_mode == "organized"
     assert fake_client.models.calls[0]["model"] == "gemini-test"
     contents = fake_client.models.calls[0]["contents"]
     assert isinstance(contents[0], str)
     assert "uporządkuj" in contents[0].lower()
+    assert "nie halucynuj" in contents[0].lower()
     assert contents[1]["mime_type"] == "image/jpeg"
 
 

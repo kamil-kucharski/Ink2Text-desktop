@@ -20,6 +20,7 @@ def test_load_app_config_reads_local_json_when_env_is_missing(tmp_path: Path) ->
 
     assert config.gemini_api_key == "local-key"
     assert config.gemini_model == "gemini-local-model"
+    assert config.app_language == "pl"
     assert config.load_error is None
 
 
@@ -41,6 +42,7 @@ def test_load_app_config_prefers_environment_values(tmp_path: Path, monkeypatch)
 
     assert config.gemini_api_key == "env-key"
     assert config.gemini_model == "gemini-env-model"
+    assert config.app_language == "pl"
 
 
 def test_load_app_config_reports_invalid_json(tmp_path: Path) -> None:
@@ -51,6 +53,7 @@ def test_load_app_config_reports_invalid_json(tmp_path: Path) -> None:
 
     assert config.gemini_api_key is None
     assert config.gemini_model == DEFAULT_GEMINI_MODEL
+    assert config.app_language == "pl"
     assert config.load_error is not None
 
 
@@ -69,6 +72,7 @@ def test_load_app_config_reads_local_dotenv_file(tmp_path: Path, monkeypatch) ->
 
     assert config.gemini_api_key == "dotenv-key"
     assert config.gemini_model == "dotenv-model"
+    assert config.app_language == "pl"
 
 
 def test_load_app_config_prefers_real_environment_over_dotenv(tmp_path: Path, monkeypatch) -> None:
@@ -84,6 +88,7 @@ def test_load_app_config_prefers_real_environment_over_dotenv(tmp_path: Path, mo
 
     assert config.gemini_api_key == "real-env-key"
     assert config.gemini_model == "real-env-model"
+    assert config.app_language == "pl"
 
 
 def test_save_app_config_writes_json_file(tmp_path: Path) -> None:
@@ -93,10 +98,12 @@ def test_save_app_config_writes_json_file(tmp_path: Path) -> None:
         config_path,
         gemini_api_key="saved-key",
         gemini_model="gemini-3-flash-preview",
+        app_language="en",
     )
 
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     assert payload == {
         "gemini_api_key": "saved-key",
         "gemini_model": "gemini-3-flash-preview",
+        "app_language": "en",
     }

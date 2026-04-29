@@ -14,6 +14,7 @@ class Note:
     id: str
     title: str
     content: str
+    content_format: str
     created_at: datetime
     updated_at: datetime
     image_paths: list[str] = field(default_factory=list)
@@ -25,6 +26,7 @@ class Note:
             id=uuid4().hex,
             title="Nowa notatka",
             content="",
+            content_format="plain",
             created_at=now,
             updated_at=now,
             image_paths=[],
@@ -43,6 +45,7 @@ class Note:
             "id": self.id,
             "title": self.title,
             "content": self.content,
+            "content_format": self.content_format,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "image_paths": self.image_paths,
@@ -54,6 +57,7 @@ class Note:
             id=data["id"],
             title=data.get("title", ""),
             content=data.get("content", ""),
+            content_format=data.get("content_format", "plain"),
             created_at=datetime.fromisoformat(data["created_at"]),
             updated_at=datetime.fromisoformat(data["updated_at"]),
             image_paths=list(data.get("image_paths", [])),

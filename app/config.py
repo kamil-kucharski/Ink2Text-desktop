@@ -18,6 +18,7 @@ SUPPORTED_GEMINI_MODELS = (
 class AppConfig:
     gemini_api_key: str | None
     gemini_model: str
+    app_language: str
     config_path: Path
     load_error: str | None = None
 
@@ -65,20 +66,32 @@ def load_app_config(base_dir: Path | None = None, env_path: Path | None = None) 
         or payload.get("gemini_model")
         or DEFAULT_GEMINI_MODEL
     )
+    app_language = (
+        os.getenv("NOTATKI_AI_LANGUAGE")
+        or payload.get("app_language")
+        or "pl"
+    )
 
     return AppConfig(
         gemini_api_key=gemini_api_key,
         gemini_model=gemini_model,
+        app_language=app_language,
         config_path=config_path,
         load_error=load_error,
     )
 
 
-def save_app_config(config_path: Path, gemini_api_key: str, gemini_model: str) -> None:
+def save_app_config(
+    config_path: Path,
+    gemini_api_key: str,
+    gemini_model: str,
+    app_language: str = "pl",
+) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "gemini_api_key": gemini_api_key,
         "gemini_model": gemini_model,
+        "app_language": app_language,
     }
     with config_path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, ensure_ascii=False, indent=2)

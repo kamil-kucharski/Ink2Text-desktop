@@ -14,7 +14,13 @@ from app.services.ai_provider import (
     build_transcription_prompt,
 )
 from app.services.image_preparation import ImagePreparationService, PreparedImage
-from app.services.pdf_export import PDFExportPayload, build_note_html, export_note_to_pdf
+from app.services.pdf_export import (
+    PDFExportPayload,
+    build_note_html,
+    convert_note_content_to_html,
+    convert_note_content_to_editor_html,
+    export_note_to_pdf,
+)
 
 __all__ = [
     "AIProvider",
@@ -32,5 +38,7 @@ __all__ = [
     "build_transcription_prompt",
     "PDFExportPayload",
     "build_note_html",
+    "convert_note_content_to_html",
+    "convert_note_content_to_editor_html",
     "export_note_to_pdf",
 ]

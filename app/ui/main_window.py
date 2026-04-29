@@ -15,10 +15,14 @@ from app.services import (
     PDFExportPayload,
     TRANSCRIPTION_MODE_LABELS,
     TranscriptionResult,
+    convert_note_content_to_html,
+    convert_note_content_to_editor_html,
     export_note_to_pdf,
 )
 from app.storage import FileNoteRepository
 from app.ui.image_import import filter_supported_image_paths
+from app.ui.i18n import translate
+from app.ui.menu_select import MenuSelectButton
 from app.ui.settings_dialog import AISettingsDialog
 
 
@@ -70,12 +74,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.current_note: Note | None = None
         self.ai_thread: QtCore.QThread | None = None
         self.ai_worker: AITranscriptionWorker | None = None
+        self._updating_format_controls = False
+        self.app_language = app_config.app_language if app_config.app_language in {"pl", "en"} else "pl"
 
-        self.setWindowTitle("Notatki AI Desktop")
         self.resize(1100, 720)
         self.setAcceptDrops(True)
 
         self._build_ui()
+        self._apply_translations()
         self.refresh_notes()
         self._create_new_note()
 
@@ -91,6 +97,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.import_images_button = QtWidgets.QPushButton("Importuj zdjęcia")
         self.transcribe_ai_button = QtWidgets.QPushButton("Przetwórz przez AI")
         self.ai_settings_button = QtWidgets.QPushButton("Ustawienia AI")
+        self.language_button = MenuSelectButton()
+        self.language_button.addItem("Polski", "pl")
+        self.language_button.addItem("English", "en")
+        self.language_button.setCurrentData(self.app_language)
         button_row.addWidget(self.new_button)
         button_row.addWidget(self.export_pdf_button)
         button_row.addWidget(self.save_button)
@@ -98,6 +108,7 @@ class MainWindow(QtWidgets.QMainWindow):
         button_row.addWidget(self.import_images_button)
         button_row.addWidget(self.transcribe_ai_button)
         button_row.addWidget(self.ai_settings_button)
+        button_row.addWidget(self.language_button)
         button_row.addStretch()
 
         splitter = QtWidgets.QSplitter()
@@ -105,26 +116,26 @@ class MainWindow(QtWidgets.QMainWindow):
 
         left_panel = QtWidgets.QWidget()
         left_layout = QtWidgets.QVBoxLayout(left_panel)
-        left_layout.addWidget(QtWidgets.QLabel("Zapisane notatki"))
+        self.saved_notes_label = QtWidgets.QLabel()
+        left_layout.addWidget(self.saved_notes_label)
         self.note_list = QtWidgets.QListWidget()
         left_layout.addWidget(self.note_list)
 
         right_panel = QtWidgets.QWidget()
         form_layout = QtWidgets.QVBoxLayout(right_panel)
-        form_layout.addWidget(QtWidgets.QLabel("Tytuł"))
+        self.title_label = QtWidgets.QLabel()
+        form_layout.addWidget(self.title_label)
         self.title_input = QtWidgets.QLineEdit()
         form_layout.addWidget(self.title_input)
         attachments_layout = QtWidgets.QHBoxLayout()
-        attachments_header = QtWidgets.QLabel("Zdjęcia")
+        self.attachments_header = QtWidgets.QLabel()
         self.move_image_earlier_button = QtWidgets.QPushButton("Wcześniej")
         self.move_image_later_button = QtWidgets.QPushButton("Później")
-        self.prepare_images_button = QtWidgets.QPushButton("Przygotuj do AI")
         self.remove_image_button = QtWidgets.QPushButton("Usuń zaznaczone zdjęcie")
-        attachments_layout.addWidget(attachments_header)
+        attachments_layout.addWidget(self.attachments_header)
         attachments_layout.addStretch()
         attachments_layout.addWidget(self.move_image_earlier_button)
         attachments_layout.addWidget(self.move_image_later_button)
-        attachments_layout.addWidget(self.prepare_images_button)
         attachments_layout.addWidget(self.remove_image_button)
         form_layout.addLayout(attachments_layout)
         image_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
@@ -138,7 +149,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.image_list.setIconSize(QtCore.QSize(96, 96))
         self.image_list.setGridSize(QtCore.QSize(132, 132))
         self.image_list.setSpacing(10)
-        self.image_preview = QtWidgets.QLabel("Brak wybranego zdjęcia")
+        self.image_preview = QtWidgets.QLabel()
         self.image_preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.image_preview.setMinimumHeight(220)
         self.image_preview.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
@@ -148,21 +159,22 @@ class MainWindow(QtWidgets.QMainWindow):
         image_splitter.setStretchFactor(0, 1)
         image_splitter.setStretchFactor(1, 2)
         form_layout.addWidget(image_splitter)
-        drag_hint = QtWidgets.QLabel("Możesz też przeciągnąć zdjęcia do okna aplikacji.")
-        drag_hint.setStyleSheet("color: #666;")
-        form_layout.addWidget(drag_hint)
+        self.drag_hint = QtWidgets.QLabel()
+        self.drag_hint.setStyleSheet("color: #666;")
+        form_layout.addWidget(self.drag_hint)
         transcription_mode_layout = QtWidgets.QHBoxLayout()
-        transcription_mode_layout.addWidget(QtWidgets.QLabel("Tryb AI"))
-        self.transcription_mode_input = QtWidgets.QComboBox()
-        self.transcription_mode_input.addItem(TRANSCRIPTION_MODE_LABELS["faithful"], "faithful")
-        self.transcription_mode_input.addItem(TRANSCRIPTION_MODE_LABELS["structured"], "structured")
-        self.transcription_mode_input.addItem(TRANSCRIPTION_MODE_LABELS["polished"], "polished")
+        self.transcription_mode_label = QtWidgets.QLabel()
+        transcription_mode_layout.addWidget(self.transcription_mode_label)
+        self.transcription_mode_input = MenuSelectButton()
+        self.transcription_mode_input.setMinimumWidth(220)
         transcription_mode_layout.addWidget(self.transcription_mode_input)
         transcription_mode_layout.addStretch()
         form_layout.addLayout(transcription_mode_layout)
-        form_layout.addWidget(QtWidgets.QLabel("Treść"))
-        self.content_input = QtWidgets.QPlainTextEdit()
-        self.content_input.setPlaceholderText("Tutaj pojawi się treść notatki.")
+        self._build_editor_toolbar()
+        form_layout.addWidget(self.editor_toolbar)
+        self.content_input = QtWidgets.QTextEdit()
+        self.content_input.setAcceptRichText(True)
+        self.content_input.setStyleSheet("background-color: white;")
         form_layout.addWidget(self.content_input, stretch=1)
 
         splitter.addWidget(left_panel)
@@ -174,7 +186,7 @@ class MainWindow(QtWidgets.QMainWindow):
         root_layout.addWidget(splitter, stretch=1)
 
         self.setCentralWidget(central_widget)
-        self.statusBar().showMessage("Gotowe")
+        self.statusBar().showMessage(self._tr("status_ready"))
 
         self.new_button.clicked.connect(self._create_new_note)
         self.export_pdf_button.clicked.connect(self._export_current_note_to_pdf)
@@ -185,10 +197,257 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ai_settings_button.clicked.connect(self._open_ai_settings)
         self.move_image_earlier_button.clicked.connect(lambda: self._move_selected_image(-1))
         self.move_image_later_button.clicked.connect(lambda: self._move_selected_image(1))
-        self.prepare_images_button.clicked.connect(self._prepare_images_for_ai)
         self.remove_image_button.clicked.connect(self._remove_selected_image)
         self.note_list.itemSelectionChanged.connect(self._load_selected_note)
         self.image_list.itemSelectionChanged.connect(self._update_image_preview)
+        self.language_button.currentDataChanged.connect(self._change_language)
+        self.content_input.currentCharFormatChanged.connect(self._sync_format_controls)
+        self.content_input.cursorPositionChanged.connect(self._sync_format_controls)
+
+    def _build_editor_toolbar(self) -> None:
+        toolbar = QtWidgets.QToolBar("Formatowanie")
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        toolbar.setIconSize(QtCore.QSize(16, 16))
+        self.editor_toolbar = toolbar
+
+        self.bold_action = toolbar.addAction(self._build_toolbar_icon("bold"), "")
+        self.bold_action.setCheckable(True)
+        self.bold_action.setToolTip("Pogrubienie")
+
+        self.italic_action = toolbar.addAction(self._build_toolbar_icon("italic"), "")
+        self.italic_action.setCheckable(True)
+        self.italic_action.setToolTip("Kursywa")
+
+        self.underline_action = toolbar.addAction(self._build_toolbar_icon("underline"), "")
+        self.underline_action.setCheckable(True)
+        self.underline_action.setToolTip("Podkreślenie")
+
+        toolbar.addSeparator()
+        self.bulleted_list_action = toolbar.addAction(self._build_toolbar_icon("bulleted-list"), "")
+        self.bulleted_list_action.setToolTip("Lista punktowana")
+        self.numbered_list_action = toolbar.addAction(self._build_toolbar_icon("numbered-list"), "")
+        self.numbered_list_action.setToolTip("Lista numerowana")
+
+        toolbar.addSeparator()
+        self.font_family_input = MenuSelectButton()
+        self.font_family_input.setMinimumWidth(220)
+        for family in QtGui.QFontDatabase.families():
+            self.font_family_input.addItem(family, family)
+        toolbar.addWidget(self.font_family_input)
+
+        self.font_size_input = MenuSelectButton()
+        self.font_size_input.setMinimumWidth(72)
+        for size in ("10", "11", "12", "13", "14", "16", "18", "20", "24", "28", "32"):
+            self.font_size_input.addItem(size)
+        toolbar.addWidget(self.font_size_input)
+
+        self.bold_action.triggered.connect(self._toggle_bold)
+        self.italic_action.triggered.connect(self._toggle_italic)
+        self.underline_action.triggered.connect(self._toggle_underline)
+        self.bulleted_list_action.triggered.connect(
+            lambda: self._insert_list(QtGui.QTextListFormat.Style.ListDisc)
+        )
+        self.numbered_list_action.triggered.connect(
+            lambda: self._insert_list(QtGui.QTextListFormat.Style.ListDecimal)
+        )
+        self.font_family_input.currentTextChanged.connect(self._set_font_family)
+        self.font_size_input.currentTextChanged.connect(self._set_font_size)
+
+    def _apply_translations(self) -> None:
+        self.setWindowTitle(self._tr("app_title"))
+        self.new_button.setText(self._tr("button_new_note"))
+        self.export_pdf_button.setText(self._tr("button_export_pdf"))
+        self.save_button.setText(self._tr("button_save"))
+        self.refresh_button.setText(self._tr("button_refresh"))
+        self.import_images_button.setText(self._tr("button_import_images"))
+        self.transcribe_ai_button.setText(self._tr("button_transcribe_ai"))
+        self.ai_settings_button.setText(self._tr("button_ai_settings"))
+        self.saved_notes_label.setText(self._tr("label_saved_notes"))
+        self.title_label.setText(self._tr("label_title"))
+        self.attachments_header.setText(self._tr("label_images"))
+        self.move_image_earlier_button.setText(self._tr("button_move_earlier"))
+        self.move_image_later_button.setText(self._tr("button_move_later"))
+        self.remove_image_button.setText(self._tr("button_remove_selected_image"))
+        self.drag_hint.setText(self._tr("label_drag_hint"))
+        self.transcription_mode_label.setText(self._tr("label_ai_mode"))
+        self.content_input.setPlaceholderText(self._tr("placeholder_note_content"))
+        self.bold_action.setToolTip(self._tr("tooltip_bold"))
+        self.italic_action.setToolTip(self._tr("tooltip_italic"))
+        self.underline_action.setToolTip(self._tr("tooltip_underline"))
+        self.bulleted_list_action.setToolTip(self._tr("tooltip_bulleted_list"))
+        self.numbered_list_action.setToolTip(self._tr("tooltip_numbered_list"))
+        self._rebuild_language_button()
+        self._rebuild_transcription_mode_button()
+        if not self.image_list.selectedItems() and self.image_preview.pixmap() is None:
+            self.image_preview.setText(self._tr("label_no_image_selected"))
+
+    def _rebuild_language_button(self) -> None:
+        current_language = self.app_language
+        self.language_button.blockSignals(True)
+        self.language_button.clear()
+        self.language_button.addItem(self._tr("lang_polish"), "pl")
+        self.language_button.addItem(self._tr("lang_english"), "en")
+        self.language_button.setCurrentData(current_language)
+        self.language_button.blockSignals(False)
+
+    def _rebuild_transcription_mode_button(self) -> None:
+        current_mode = self.transcription_mode_input.currentData() or "faithful"
+        self.transcription_mode_input.blockSignals(True)
+        self.transcription_mode_input.clear()
+        for mode in ("faithful", "formatted", "organized", "expanded"):
+            self.transcription_mode_input.addItem(self._mode_label(mode), mode)
+        self.transcription_mode_input.setCurrentData(current_mode)
+        self.transcription_mode_input.blockSignals(False)
+
+    def _change_language(self, language_code: object) -> None:
+        if not isinstance(language_code, str) or language_code == self.app_language:
+            return
+
+        self.app_language = language_code
+        self.app_config.app_language = language_code
+        self._apply_translations()
+        self.statusBar().showMessage(
+            self._tr("status_language_changed", language=self._language_display_name(language_code))
+        )
+        try:
+            save_app_config(
+                self.app_config.config_path,
+                gemini_api_key=self.app_config.gemini_api_key or "",
+                gemini_model=self.app_config.gemini_model,
+                app_language=self.app_language,
+            )
+        except OSError:
+            pass
+
+    def _language_display_name(self, language_code: str) -> str:
+        return self._tr("lang_polish") if language_code == "pl" else self._tr("lang_english")
+
+    def _mode_label(self, mode: str) -> str:
+        return self._tr(f"mode_{mode}")
+
+    def _tr(self, key: str, **kwargs) -> str:
+        return translate(self.app_language, key, **kwargs)
+
+    def _build_toolbar_icon(self, kind: str) -> QtGui.QIcon:
+        pixmap = QtGui.QPixmap(18, 18)
+        pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        pen = QtGui.QPen(QtGui.QColor("#1f2937"))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.setBrush(QtGui.QColor("#1f2937"))
+
+        if kind == "bold":
+            font = QtGui.QFont("DejaVu Sans", 11)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(pixmap.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "B")
+        elif kind == "italic":
+            font = QtGui.QFont("DejaVu Sans", 11)
+            font.setItalic(True)
+            painter.setFont(font)
+            painter.drawText(pixmap.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "I")
+        elif kind == "underline":
+            font = QtGui.QFont("DejaVu Sans", 10)
+            painter.setFont(font)
+            painter.drawText(pixmap.rect().adjusted(0, -1, 0, 0), QtCore.Qt.AlignmentFlag.AlignCenter, "U")
+            painter.drawLine(4, 14, 14, 14)
+        elif kind == "bulleted-list":
+            for y in (4, 9, 14):
+                painter.drawEllipse(QtCore.QPointF(4, y), 1.3, 1.3)
+                painter.drawLine(8, y, 15, y)
+        elif kind == "numbered-list":
+            font = QtGui.QFont("DejaVu Sans", 6)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(QtCore.QRect(0, 0, 6, 6), QtCore.Qt.AlignmentFlag.AlignCenter, "1")
+            painter.drawText(QtCore.QRect(0, 5, 6, 6), QtCore.Qt.AlignmentFlag.AlignCenter, "2")
+            painter.drawText(QtCore.QRect(0, 10, 6, 6), QtCore.Qt.AlignmentFlag.AlignCenter, "3")
+            for y in (4, 9, 14):
+                painter.drawLine(8, y, 15, y)
+        else:
+            font = QtGui.QFont("DejaVu Sans", 9)
+            painter.setFont(font)
+            painter.drawText(pixmap.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "?")
+
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
+    def _merge_char_format(self, char_format: QtGui.QTextCharFormat) -> None:
+        cursor = self.content_input.textCursor()
+        if not cursor.hasSelection():
+            cursor.select(QtGui.QTextCursor.SelectionType.WordUnderCursor)
+        cursor.mergeCharFormat(char_format)
+        self.content_input.mergeCurrentCharFormat(char_format)
+
+    def _toggle_bold(self) -> None:
+        char_format = QtGui.QTextCharFormat()
+        weight = QtGui.QFont.Weight.Bold if self.bold_action.isChecked() else QtGui.QFont.Weight.Normal
+        char_format.setFontWeight(weight)
+        self._merge_char_format(char_format)
+
+    def _toggle_italic(self) -> None:
+        char_format = QtGui.QTextCharFormat()
+        char_format.setFontItalic(self.italic_action.isChecked())
+        self._merge_char_format(char_format)
+
+    def _toggle_underline(self) -> None:
+        char_format = QtGui.QTextCharFormat()
+        char_format.setFontUnderline(self.underline_action.isChecked())
+        self._merge_char_format(char_format)
+
+    def _insert_list(self, list_style: QtGui.QTextListFormat.Style) -> None:
+        cursor = self.content_input.textCursor()
+        cursor.beginEditBlock()
+        list_format = QtGui.QTextListFormat()
+        current_list = cursor.currentList()
+        if current_list is not None:
+            list_format = current_list.format()
+        else:
+            block_format = cursor.blockFormat()
+            list_format.setIndent(max(block_format.indent(), 1))
+            cursor.setBlockFormat(block_format)
+        list_format.setStyle(list_style)
+        cursor.createList(list_format)
+        cursor.endEditBlock()
+
+    def _set_font_family(self, family_name: str) -> None:
+        if self._updating_format_controls:
+            return
+        char_format = QtGui.QTextCharFormat()
+        char_format.setFontFamily(family_name)
+        self._merge_char_format(char_format)
+
+    def _set_font_size(self, size_text: str) -> None:
+        if self._updating_format_controls:
+            return
+        try:
+            size = float(size_text)
+        except ValueError:
+            return
+        if size <= 0:
+            return
+        char_format = QtGui.QTextCharFormat()
+        char_format.setFontPointSize(size)
+        self._merge_char_format(char_format)
+
+    def _sync_format_controls(self) -> None:
+        if not hasattr(self, "content_input"):
+            return
+
+        self._updating_format_controls = True
+        char_format = self.content_input.currentCharFormat()
+        font = char_format.font()
+        self.bold_action.setChecked(font.bold())
+        self.italic_action.setChecked(font.italic())
+        self.underline_action.setChecked(font.underline())
+        self.font_family_input.setCurrentText(font.family())
+        point_size = char_format.fontPointSize() or self.content_input.fontPointSize() or 12
+        self.font_size_input.setCurrentText(str(int(point_size)))
+        self._updating_format_controls = False
 
     def refresh_notes(self, selected_note_id: str | None = None) -> None:
         if selected_note_id is None:
@@ -211,7 +470,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self._display_note(note)
 
         note_count = len(notes)
-        message = "Brak zapisanych notatek" if note_count == 0 else f"Znaleziono notatek: {note_count}"
+        message = (
+            self._tr("status_no_notes")
+            if note_count == 0
+            else self._tr("status_notes_found", count=note_count)
+        )
         self.statusBar().showMessage(message)
 
     def _populate_note_list(self, notes: Iterable[Note]) -> None:
@@ -223,11 +486,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _create_new_note(self) -> None:
         self.current_note = Note.create_empty()
+        self.current_note.title = self._tr("default_note_title")
         self._display_note(self.current_note)
         self.note_list.blockSignals(True)
         self.note_list.clearSelection()
         self.note_list.blockSignals(False)
-        self.statusBar().showMessage("Utworzono nową notatkę")
+        self.statusBar().showMessage(self._tr("status_new_note"))
 
     def _load_selected_note(self) -> None:
         selected_items = self.note_list.selectedItems()
@@ -240,17 +504,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         note = self.repository.get_note(note_id)
         self._display_note(note)
-        self.statusBar().showMessage(f"Wczytano notatkę: {note.display_title}")
+        self.statusBar().showMessage(self._tr("status_loaded_note", title=note.display_title))
 
     def _save_current_note(self) -> None:
         if self.current_note is None:
             self.current_note = Note.create_empty()
+            self.current_note.title = self._tr("default_note_title")
 
         self._sync_form_to_current_note()
         saved_note = self.repository.save(self.current_note)
         self.current_note = saved_note
         self.refresh_notes(selected_note_id=saved_note.id)
-        self.statusBar().showMessage(f"Zapisano notatkę: {saved_note.display_title}")
+        self.statusBar().showMessage(self._tr("status_saved_note", title=saved_note.display_title))
 
     def _select_note(self, note_id: str) -> None:
         for row in range(self.note_list.count()):
@@ -262,9 +527,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _import_images(self) -> None:
         selected_paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self,
-            "Wybierz zdjęcia notatki",
+            self._tr("dialog_choose_images"),
             "",
-            "Pliki graficzne (*.png *.jpg *.jpeg *.bmp *.gif *.webp)",
+            self._tr("dialog_image_files"),
         )
         if not selected_paths:
             return
@@ -279,14 +544,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         selected_items = self.image_list.selectedItems()
         if not selected_items:
-            self.statusBar().showMessage("Najpierw zaznacz zdjęcie do usunięcia")
+            self.statusBar().showMessage(self._tr("status_select_image_to_remove"))
             return
 
         relative_path = selected_items[0].data(QtCore.Qt.ItemDataRole.UserRole)
         self.repository.remove_image(self.current_note, relative_path)
         self._refresh_image_list()
         self.refresh_notes(selected_note_id=self.current_note.id)
-        self.statusBar().showMessage("Usunięto zdjęcie z notatki")
+        self.statusBar().showMessage(self._tr("status_removed_image"))
 
     def _move_selected_image(self, direction: int) -> None:
         if self.current_note is None:
@@ -295,19 +560,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_form_to_current_note()
         selected_items = self.image_list.selectedItems()
         if not selected_items:
-            self.statusBar().showMessage("Najpierw zaznacz zdjęcie do przesunięcia")
+            self.statusBar().showMessage(self._tr("status_select_image_to_move"))
             return
 
         relative_path = selected_items[0].data(QtCore.Qt.ItemDataRole.UserRole)
         moved = self.repository.move_image(self.current_note, relative_path, direction)
         if not moved:
-            self.statusBar().showMessage("Tego zdjęcia nie da się już bardziej przesunąć")
+            self.statusBar().showMessage(self._tr("status_image_cannot_move_more"))
             return
 
         self._refresh_image_list()
         self._select_image(relative_path)
         self.refresh_notes(selected_note_id=self.current_note.id)
-        self.statusBar().showMessage("Zmieniono kolejność zdjęć")
+        self.statusBar().showMessage(self._tr("status_changed_image_order"))
 
     def _prepare_images_for_ai(self) -> None:
         if self.current_note is None:
@@ -315,7 +580,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._sync_form_to_current_note()
         if not self.current_note.image_paths:
-            self.statusBar().showMessage("Dodaj zdjęcia, zanim przygotujesz je do AI")
+            self.statusBar().showMessage(self._tr("status_add_images_before_prepare"))
             return
 
         try:
@@ -324,40 +589,40 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.repository,
             )
         except RuntimeError as error:
-            QtWidgets.QMessageBox.warning(self, "Brak zależności", str(error))
-            self.statusBar().showMessage("Nie udało się przygotować zdjęć")
+            QtWidgets.QMessageBox.warning(self, self._tr("dialog_missing_dependency"), str(error))
+            self.statusBar().showMessage(self._tr("status_prepare_failed"))
             return
 
         if not prepared_images:
-            self.statusBar().showMessage("Nie udało się przygotować zdjęć")
+            self.statusBar().showMessage(self._tr("status_prepare_failed"))
             return
 
         output_dir = prepared_images[0].prepared_path.parent
         summary_lines = [
-            f"Przygotowano zdjęć: {len(prepared_images)}",
-            f"Katalog wyjściowy: {output_dir}",
+            self._tr("dialog_images_prepared_count", count=len(prepared_images)),
+            self._tr("dialog_images_output_dir", path=output_dir),
         ]
         QtWidgets.QMessageBox.information(
             self,
-            "Zdjęcia gotowe do AI",
+            self._tr("dialog_images_ready"),
             "\n".join(summary_lines),
         )
-        self.statusBar().showMessage(f"Przygotowano zdjęć do AI: {len(prepared_images)}")
+        self.statusBar().showMessage(self._tr("status_prepared_images", count=len(prepared_images)))
 
     def _transcribe_current_note_with_ai(self) -> None:
         if self.current_note is None:
             return
         if self.ai_thread is not None:
-            self.statusBar().showMessage("Przetwarzanie AI już trwa")
+            self.statusBar().showMessage(self._tr("status_ai_already_running"))
             return
         if self.app_config.load_error and not self.app_config.gemini_api_key:
-            QtWidgets.QMessageBox.warning(self, "Błąd konfiguracji", self.app_config.load_error)
-            self.statusBar().showMessage("Popraw konfigurację AI i spróbuj ponownie")
+            QtWidgets.QMessageBox.warning(self, self._tr("dialog_config_error"), self.app_config.load_error)
+            self.statusBar().showMessage(self._tr("status_fix_ai_config"))
             return
 
         self._sync_form_to_current_note()
         if not self.current_note.image_paths:
-            self.statusBar().showMessage("Dodaj zdjęcia przed uruchomieniem AI")
+            self.statusBar().showMessage(self._tr("status_add_images_before_ai"))
             return
 
         try:
@@ -366,18 +631,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.repository,
             )
         except RuntimeError as error:
-            QtWidgets.QMessageBox.warning(self, "Brak zależności", str(error))
-            self.statusBar().showMessage("Nie udało się przygotować zdjęć do AI")
+            QtWidgets.QMessageBox.warning(self, self._tr("dialog_missing_dependency"), str(error))
+            self.statusBar().showMessage(self._tr("status_prepare_ai_failed"))
             return
 
         prepared_paths = [image.prepared_path for image in prepared_images]
         if not prepared_paths:
-            self.statusBar().showMessage("Nie udało się przygotować zdjęć do AI")
+            self.statusBar().showMessage(self._tr("status_prepare_ai_failed"))
             return
 
         transcription_mode = self.transcription_mode_input.currentData()
         self._set_ai_busy(True)
-        self.statusBar().showMessage("Trwa przetwarzanie notatki przez AI...")
+        self.statusBar().showMessage(self._tr("status_ai_processing"))
 
         self.ai_thread = QtCore.QThread(self)
         self.ai_worker = AITranscriptionWorker(
@@ -397,7 +662,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ai_thread.start()
 
     def _open_ai_settings(self) -> None:
-        dialog = AISettingsDialog(self.app_config, self)
+        dialog = AISettingsDialog(self.app_config, self.app_language, self)
         if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
             return
 
@@ -406,12 +671,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.app_config.config_path,
                 gemini_api_key=dialog.api_key,
                 gemini_model=dialog.model_name,
+                app_language=self.app_language,
             )
         except OSError as error:
             QtWidgets.QMessageBox.warning(
                 self,
-                "Błąd zapisu ustawień",
-                f"Nie udało się zapisać ustawień AI: {error}",
+                self._tr("dialog_save_settings_error"),
+                f"{self._tr('dialog_save_settings_error')}: {error}",
             )
             return
 
@@ -423,25 +689,31 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         QtWidgets.QMessageBox.information(
             self,
-            "Ustawienia zapisane",
-            "Zapisano ustawienia AI. Nowe wartości będą używane od razu.",
+            self._tr("dialog_saved_settings"),
+            self._tr("dialog_saved_settings_message"),
         )
-        self.statusBar().showMessage(f"Zapisano ustawienia AI dla modelu {self.app_config.gemini_model}")
+        self.statusBar().showMessage(
+            self._tr("status_saved_ai_settings", model=self.app_config.gemini_model)
+        )
 
     def _export_current_note_to_pdf(self) -> None:
         if self.current_note is None:
             self.current_note = Note.create_empty()
+            self.current_note.title = self._tr("default_note_title")
 
         self._sync_form_to_current_note()
-        title = self.current_note.title.strip() or "notatka"
-        sanitized_title = "".join(char if char.isalnum() else "_" for char in title).strip("_") or "notatka"
+        title = self.current_note.title.strip() or self._tr("default_export_title")
+        sanitized_title = (
+            "".join(char if char.isalnum() else "_" for char in title).strip("_")
+            or self._tr("default_export_title")
+        )
         default_path = self.repository.base_dir / "exports" / f"{sanitized_title}.pdf"
 
         selected_path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
-            "Eksportuj notatkę do PDF",
+            self._tr("dialog_export_pdf"),
             str(default_path),
-            "Pliki PDF (*.pdf)",
+            self._tr("dialog_pdf_files"),
         )
         if not selected_path:
             return
@@ -456,32 +728,35 @@ class MainWindow(QtWidgets.QMainWindow):
                 PDFExportPayload(
                     title=self.current_note.title,
                     content=self.current_note.content,
+                    content_html=(
+                        self.current_note.content if self.current_note.content_format == "html" else None
+                    ),
                 ),
             )
         except RuntimeError as error:
-            QtWidgets.QMessageBox.warning(self, "Błąd eksportu", str(error))
-            self.statusBar().showMessage("Nie udało się wyeksportować notatki do PDF")
+            QtWidgets.QMessageBox.warning(self, self._tr("dialog_export_error"), str(error))
+            self.statusBar().showMessage(self._tr("status_pdf_export_failed"))
             return
         except OSError as error:
             QtWidgets.QMessageBox.warning(
                 self,
-                "Błąd zapisu",
-                f"Nie udało się zapisać pliku PDF: {error}",
+                self._tr("dialog_save_error"),
+                f"{self._tr('dialog_save_error')}: {error}",
             )
-            self.statusBar().showMessage("Nie udało się zapisać pliku PDF")
+            self.statusBar().showMessage(self._tr("status_pdf_save_failed"))
             return
 
         QtWidgets.QMessageBox.information(
             self,
-            "Eksport zakończony",
-            f"Wyeksportowano notatkę do pliku:\n{pdf_path}",
+            self._tr("dialog_export_finished"),
+            self._tr("dialog_export_finished_message", path=pdf_path),
         )
-        self.statusBar().showMessage(f"Wyeksportowano PDF: {pdf_path.name}")
+        self.statusBar().showMessage(self._tr("status_pdf_exported", name=pdf_path.name))
 
     def _refresh_image_list(self) -> None:
         self.image_list.clear()
         self.image_preview.clear()
-        self.image_preview.setText("Brak wybranego zdjęcia")
+        self.image_preview.setText(self._tr("label_no_image_selected"))
 
         if self.current_note is None:
             return
@@ -501,7 +776,7 @@ class MainWindow(QtWidgets.QMainWindow):
         selected_items = self.image_list.selectedItems()
         if not selected_items:
             self.image_preview.clear()
-            self.image_preview.setText("Brak wybranego zdjęcia")
+            self.image_preview.setText(self._tr("label_no_image_selected"))
             return
 
         relative_path = selected_items[0].data(QtCore.Qt.ItemDataRole.UserRole)
@@ -510,7 +785,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if pixmap.isNull():
             self.image_preview.clear()
-            self.image_preview.setText("Nie udało się wczytać podglądu")
+            self.image_preview.setText(self._tr("label_preview_load_failed"))
             return
 
         scaled = pixmap.scaled(
@@ -536,13 +811,18 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.current_note is None:
             return
 
-        self.current_note.title = self.title_input.text().strip() or "Nowa notatka"
-        self.current_note.content = self.content_input.toPlainText()
+        self.current_note.title = self.title_input.text().strip() or self._tr("default_note_title")
+        if self.content_input.toPlainText().strip():
+            self.current_note.content = self.content_input.toHtml()
+            self.current_note.content_format = "html"
+        else:
+            self.current_note.content = ""
+            self.current_note.content_format = "html"
 
     def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
         if self._extract_image_paths_from_mime_data(event.mimeData()):
             event.acceptProposedAction()
-            self.statusBar().showMessage("Upuść zdjęcia, aby dodać je do notatki")
+            self.statusBar().showMessage(self._tr("status_drag_drop_images"))
             return
 
         event.ignore()
@@ -558,7 +838,7 @@ class MainWindow(QtWidgets.QMainWindow):
         image_paths = self._extract_image_paths_from_mime_data(event.mimeData())
         if not image_paths:
             event.ignore()
-            self.statusBar().showMessage("Upuszczone pliki nie są obsługiwanymi obrazami")
+            self.statusBar().showMessage(self._tr("status_drop_not_supported"))
             return
 
         event.acceptProposedAction()
@@ -567,21 +847,22 @@ class MainWindow(QtWidgets.QMainWindow):
     def _import_images_from_paths(self, selected_paths: list[str]) -> None:
         if self.current_note is None:
             self.current_note = Note.create_empty()
+            self.current_note.title = self._tr("default_note_title")
 
         self._sync_form_to_current_note()
         filtered_paths = filter_supported_image_paths(selected_paths)
         if not filtered_paths:
-            self.statusBar().showMessage("Nie znaleziono obsługiwanych plików graficznych")
+            self.statusBar().showMessage(self._tr("status_no_supported_images"))
             return
 
         imported_paths = self.repository.import_images(self.current_note, filtered_paths)
         if not imported_paths:
-            self.statusBar().showMessage("Nie udało się zaimportować zdjęć")
+            self.statusBar().showMessage(self._tr("status_import_failed"))
             return
 
         self._refresh_image_list()
         self._select_image(imported_paths[-1])
-        self.statusBar().showMessage(f"Zaimportowano zdjęć: {len(imported_paths)}")
+        self.statusBar().showMessage(self._tr("status_imported_images", count=len(imported_paths)))
         self.refresh_notes(selected_note_id=self.current_note.id)
 
     def _extract_image_paths_from_mime_data(self, mime_data: QtCore.QMimeData) -> list[str]:
@@ -606,8 +887,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def _display_note(self, note: Note) -> None:
         self.current_note = note
         self.title_input.setText(note.title)
-        self.content_input.setPlainText(note.content)
+        if note.content.strip():
+            if note.content_format == "html":
+                self.content_input.setHtml(convert_note_content_to_editor_html(note.content, "html"))
+            else:
+                self.content_input.setHtml(
+                    convert_note_content_to_editor_html(note.content, note.content_format)
+                )
+        else:
+            self.content_input.clear()
         self._refresh_image_list()
+        self._sync_format_controls()
 
     def _has_note_item(self, note_id: str) -> bool:
         for row in range(self.note_list.count()):
@@ -620,20 +910,20 @@ class MainWindow(QtWidgets.QMainWindow):
     def _handle_ai_transcription_success(self, result: object) -> None:
         if not isinstance(result, TranscriptionResult):
             self._handle_ai_transcription_failure(
-                "Model zwrócił odpowiedź w nieobsługiwanym formacie."
+                self._tr("status_ai_result_unsupported")
             )
             return
 
         self._apply_transcription_result(result)
-        mode_label = TRANSCRIPTION_MODE_LABELS.get(result.transcription_mode, result.transcription_mode)
+        mode_label = self._mode_label(result.transcription_mode)
         self.statusBar().showMessage(
-            f"Notatka została przepisana przez model {result.model_name} w trybie: {mode_label}"
+            self._tr("status_ai_done", model=result.model_name, mode=mode_label)
         )
 
     @QtCore.Slot(str)
     def _handle_ai_transcription_failure(self, message: str) -> None:
-        QtWidgets.QMessageBox.warning(self, "Błąd AI", message)
-        self.statusBar().showMessage("Nie udało się przetworzyć notatki przez AI")
+        QtWidgets.QMessageBox.warning(self, self._tr("dialog_ai_error"), message)
+        self.statusBar().showMessage(self._tr("status_ai_failed"))
 
     @QtCore.Slot()
     def _finish_ai_transcription(self) -> None:
@@ -644,26 +934,36 @@ class MainWindow(QtWidgets.QMainWindow):
     def _apply_transcription_result(self, result: TranscriptionResult) -> None:
         existing_text = self.content_input.toPlainText().strip()
         transcription_text = result.text.strip()
+        transcription_html = convert_note_content_to_editor_html(transcription_text, "plain")
 
         if existing_text:
             decision = self._ask_how_to_apply_transcription()
             if decision == "cancel":
-                self.statusBar().showMessage("Anulowano wstawianie wyniku AI")
+                self.statusBar().showMessage(self._tr("status_ai_insert_cancelled"))
                 return
             if decision == "append":
-                merged_text = f"{self.content_input.toPlainText().rstrip()}\n\n{transcription_text}"
-                self.content_input.setPlainText(merged_text)
+                cursor = self.content_input.textCursor()
+                cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+                cursor.insertHtml("<p><br /></p>")
+                cursor.insertHtml(transcription_html)
+                self.content_input.setTextCursor(cursor)
                 return
 
-        self.content_input.setPlainText(transcription_text)
+        self.content_input.setHtml(transcription_html)
 
     def _ask_how_to_apply_transcription(self) -> str:
         message_box = QtWidgets.QMessageBox(self)
-        message_box.setWindowTitle("Treść już istnieje")
-        message_box.setText("Notatka ma już treść. Jak chcesz wstawić wynik AI?")
-        replace_button = message_box.addButton("Zastąp treść", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
-        append_button = message_box.addButton("Dopisz na końcu", QtWidgets.QMessageBox.ButtonRole.ActionRole)
-        cancel_button = message_box.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
+        message_box.setWindowTitle(self._tr("dialog_existing_content_title"))
+        message_box.setText(self._tr("dialog_existing_content_text"))
+        replace_button = message_box.addButton(
+            self._tr("dialog_replace_content"),
+            QtWidgets.QMessageBox.ButtonRole.AcceptRole,
+        )
+        append_button = message_box.addButton(
+            self._tr("dialog_append_content"),
+            QtWidgets.QMessageBox.ButtonRole.ActionRole,
+        )
+        cancel_button = message_box.addButton(self._tr("dialog_cancel"), QtWidgets.QMessageBox.ButtonRole.RejectRole)
         message_box.exec()
 
         clicked_button = message_box.clickedButton()
@@ -677,5 +977,4 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _set_ai_busy(self, is_busy: bool) -> None:
         self.transcribe_ai_button.setDisabled(is_busy)
-        self.prepare_images_button.setDisabled(is_busy)
         self.import_images_button.setDisabled(is_busy)

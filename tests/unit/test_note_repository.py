@@ -8,7 +8,8 @@ def test_repository_saves_and_reads_note(tmp_path: Path) -> None:
     repository = FileNoteRepository(base_dir=tmp_path)
     note = Note.create_empty()
     note.title = "Notatka testowa"
-    note.content = "Linia 1\nLinia 2"
+    note.content = "<p><strong>Linia 1</strong></p><p>Linia 2</p>"
+    note.content_format = "html"
     note.image_paths = ["uploads/example/note.png"]
 
     repository.save(note)
@@ -16,7 +17,8 @@ def test_repository_saves_and_reads_note(tmp_path: Path) -> None:
 
     assert loaded.id == note.id
     assert loaded.title == "Notatka testowa"
-    assert loaded.content == "Linia 1\nLinia 2"
+    assert loaded.content == "<p><strong>Linia 1</strong></p><p>Linia 2</p>"
+    assert loaded.content_format == "html"
     assert loaded.image_paths == ["uploads/example/note.png"]
 
 
