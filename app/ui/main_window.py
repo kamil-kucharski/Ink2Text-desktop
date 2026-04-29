@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import escape
+import math
 from pathlib import Path
 import tempfile
 from typing import Iterable
@@ -750,14 +751,27 @@ class LoadingSpinner(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
 
         rect = self.rect().adjusted(10, 10, -10, -10)
-        center = rect.center()
-        gradient = QtGui.QConicalGradient(center, -self._angle)
-        gradient.setColorAt(0.00, QtGui.QColor(23, 43, 101, 15))
-        gradient.setColorAt(0.45, QtGui.QColor(30, 58, 138, 90))
-        gradient.setColorAt(0.82, QtGui.QColor(30, 58, 138, 230))
-        gradient.setColorAt(1.00, QtGui.QColor(30, 58, 138, 255))
+        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        segment_count = 72
+        segment_span = 360 / segment_count
+        dark_color = QtGui.QColor(30, 58, 138)
+        light_color = QtGui.QColor(30, 58, 138)
 
-        pen = QtGui.QPen(QtGui.QBrush(gradient), 9)
+        for segment in range(segment_count):
+            progress = segment / (segment_count - 1)
+            end_fade = math.sin(progress * math.pi)
+            blue_strength = min(1.0, max(0.0, (progress - 0.38) / 0.42))
+            alpha = int((24 + 196 * blue_strength) * end_fade)
+            color = QtGui.QColor(dark_color if blue_strength > 0.5 else light_color)
+            color.setAlpha(alpha)
+            pen = QtGui.QPen(color, 9)
+            pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            start_angle = int((self._angle - segment * segment_span) * 16)
+            span_angle = int(-segment_span * 0.82 * 16)
+            painter.drawArc(rect, start_angle, span_angle)
+
+        pen = QtGui.QPen(QtGui.QColor(30, 58, 138, 12), 9)
         pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawEllipse(rect)
