@@ -3,19 +3,23 @@
 from app.services.ai_provider import (
     AIProvider,
     AIProviderError,
+    DEFAULT_FALLBACK_MODELS,
     GeminiAIProvider,
     InvalidProviderResponseError,
     MissingAPIKeyError,
     ProviderDependencyError,
     ProviderRequestError,
+    TRANSCRIPTION_MODE_LABELS,
     TranscriptionResult,
     build_transcription_prompt,
 )
 from app.services.image_preparation import ImagePreparationService, PreparedImage
+from app.services.pdf_export import PDFExportPayload, build_note_html, export_note_to_pdf
 
 __all__ = [
     "AIProvider",
     "AIProviderError",
+    "DEFAULT_FALLBACK_MODELS",
     "GeminiAIProvider",
     "ImagePreparationService",
     "InvalidProviderResponseError",
@@ -23,6 +27,10 @@ __all__ = [
     "PreparedImage",
     "ProviderDependencyError",
     "ProviderRequestError",
+    "TRANSCRIPTION_MODE_LABELS",
     "TranscriptionResult",
     "build_transcription_prompt",
+    "PDFExportPayload",
+    "build_note_html",
+    "export_note_to_pdf",
 ]

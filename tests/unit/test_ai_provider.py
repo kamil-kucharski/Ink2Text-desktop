@@ -6,6 +6,7 @@ from app.services.ai_provider import (
     InvalidProviderResponseError,
     MissingAPIKeyError,
     ProviderRequestError,
+    TRANSCRIPTION_MODE_LABELS,
     build_transcription_prompt,
 )
 
@@ -53,11 +54,18 @@ class FakeClient:
 
 
 def test_build_transcription_prompt_contains_required_rules() -> None:
-    prompt = build_transcription_prompt()
+    prompt = build_transcription_prompt("faithful")
 
     assert "Zachowaj strukturę nagłówków" in prompt
     assert "[nieczytelne]" in prompt
     assert "Nie dopisuj informacji" in prompt
+
+
+def test_build_transcription_prompt_supports_all_declared_modes() -> None:
+    for mode in TRANSCRIPTION_MODE_LABELS:
+        prompt = build_transcription_prompt(mode)
+        assert isinstance(prompt, str)
+        assert "[nieczytelne]" in prompt
 
 
 def test_gemini_provider_requires_api_key() -> None:
@@ -80,13 +88,15 @@ def test_gemini_provider_builds_request_with_images_and_prompt(tmp_path: Path) -
     provider._create_client = lambda: fake_client
     provider._load_sdk = lambda: (None, FakeTypesModule)
 
-    result = provider.transcribe_images([image_path])
+    result = provider.transcribe_images([image_path], transcription_mode="structured")
 
     assert result.text == "Przepisana notatka"
     assert result.model_name == "gemini-test"
+    assert result.transcription_mode == "structured"
     assert fake_client.models.calls[0]["model"] == "gemini-test"
     contents = fake_client.models.calls[0]["contents"]
     assert isinstance(contents[0], str)
+    assert "uporządkuj" in contents[0].lower()
     assert contents[1]["mime_type"] == "image/jpeg"
 
 

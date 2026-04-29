@@ -7,7 +7,16 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.config import AppConfig, load_app_config, save_app_config
 from app.models import Note
-from app.services import AIProvider, AIProviderError, GeminiAIProvider, ImagePreparationService, TranscriptionResult
+from app.services import (
+    AIProvider,
+    AIProviderError,
+    GeminiAIProvider,
+    ImagePreparationService,
+    PDFExportPayload,
+    TRANSCRIPTION_MODE_LABELS,
+    TranscriptionResult,
+    export_note_to_pdf,
+)
 from app.storage import FileNoteRepository
 from app.ui.image_import import filter_supported_image_paths
 from app.ui.settings_dialog import AISettingsDialog
@@ -18,15 +27,24 @@ class AITranscriptionWorker(QtCore.QObject):
     failed = QtCore.Signal(str)
     finished = QtCore.Signal()
 
-    def __init__(self, ai_provider: AIProvider, image_paths: list[Path]) -> None:
+    def __init__(
+        self,
+        ai_provider: AIProvider,
+        image_paths: list[Path],
+        transcription_mode: str,
+    ) -> None:
         super().__init__()
         self.ai_provider = ai_provider
         self.image_paths = image_paths
+        self.transcription_mode = transcription_mode
 
     @QtCore.Slot()
     def run(self) -> None:
         try:
-            result = self.ai_provider.transcribe_images(self.image_paths)
+            result = self.ai_provider.transcribe_images(
+                self.image_paths,
+                transcription_mode=self.transcription_mode,
+            )
             self.succeeded.emit(result)
         except AIProviderError as error:
             self.failed.emit(str(error))
@@ -68,11 +86,13 @@ class MainWindow(QtWidgets.QMainWindow):
         button_row = QtWidgets.QHBoxLayout()
         self.new_button = QtWidgets.QPushButton("Nowa notatka")
         self.save_button = QtWidgets.QPushButton("Zapisz")
+        self.export_pdf_button = QtWidgets.QPushButton("Eksportuj PDF")
         self.refresh_button = QtWidgets.QPushButton("Odśwież")
         self.import_images_button = QtWidgets.QPushButton("Importuj zdjęcia")
         self.transcribe_ai_button = QtWidgets.QPushButton("Przetwórz przez AI")
         self.ai_settings_button = QtWidgets.QPushButton("Ustawienia AI")
         button_row.addWidget(self.new_button)
+        button_row.addWidget(self.export_pdf_button)
         button_row.addWidget(self.save_button)
         button_row.addWidget(self.refresh_button)
         button_row.addWidget(self.import_images_button)
@@ -131,6 +151,15 @@ class MainWindow(QtWidgets.QMainWindow):
         drag_hint = QtWidgets.QLabel("Możesz też przeciągnąć zdjęcia do okna aplikacji.")
         drag_hint.setStyleSheet("color: #666;")
         form_layout.addWidget(drag_hint)
+        transcription_mode_layout = QtWidgets.QHBoxLayout()
+        transcription_mode_layout.addWidget(QtWidgets.QLabel("Tryb AI"))
+        self.transcription_mode_input = QtWidgets.QComboBox()
+        self.transcription_mode_input.addItem(TRANSCRIPTION_MODE_LABELS["faithful"], "faithful")
+        self.transcription_mode_input.addItem(TRANSCRIPTION_MODE_LABELS["structured"], "structured")
+        self.transcription_mode_input.addItem(TRANSCRIPTION_MODE_LABELS["polished"], "polished")
+        transcription_mode_layout.addWidget(self.transcription_mode_input)
+        transcription_mode_layout.addStretch()
+        form_layout.addLayout(transcription_mode_layout)
         form_layout.addWidget(QtWidgets.QLabel("Treść"))
         self.content_input = QtWidgets.QPlainTextEdit()
         self.content_input.setPlaceholderText("Tutaj pojawi się treść notatki.")
@@ -148,6 +177,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage("Gotowe")
 
         self.new_button.clicked.connect(self._create_new_note)
+        self.export_pdf_button.clicked.connect(self._export_current_note_to_pdf)
         self.save_button.clicked.connect(self._save_current_note)
         self.refresh_button.clicked.connect(self.refresh_notes)
         self.import_images_button.clicked.connect(self._import_images)
@@ -345,11 +375,16 @@ class MainWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage("Nie udało się przygotować zdjęć do AI")
             return
 
+        transcription_mode = self.transcription_mode_input.currentData()
         self._set_ai_busy(True)
         self.statusBar().showMessage("Trwa przetwarzanie notatki przez AI...")
 
         self.ai_thread = QtCore.QThread(self)
-        self.ai_worker = AITranscriptionWorker(self.ai_provider, prepared_paths)
+        self.ai_worker = AITranscriptionWorker(
+            self.ai_provider,
+            prepared_paths,
+            transcription_mode=transcription_mode,
+        )
         self.ai_worker.moveToThread(self.ai_thread)
 
         self.ai_thread.started.connect(self.ai_worker.run)
@@ -392,6 +427,56 @@ class MainWindow(QtWidgets.QMainWindow):
             "Zapisano ustawienia AI. Nowe wartości będą używane od razu.",
         )
         self.statusBar().showMessage(f"Zapisano ustawienia AI dla modelu {self.app_config.gemini_model}")
+
+    def _export_current_note_to_pdf(self) -> None:
+        if self.current_note is None:
+            self.current_note = Note.create_empty()
+
+        self._sync_form_to_current_note()
+        title = self.current_note.title.strip() or "notatka"
+        sanitized_title = "".join(char if char.isalnum() else "_" for char in title).strip("_") or "notatka"
+        default_path = self.repository.base_dir / "exports" / f"{sanitized_title}.pdf"
+
+        selected_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Eksportuj notatkę do PDF",
+            str(default_path),
+            "Pliki PDF (*.pdf)",
+        )
+        if not selected_path:
+            return
+
+        pdf_path = Path(selected_path)
+        if pdf_path.suffix.lower() != ".pdf":
+            pdf_path = pdf_path.with_suffix(".pdf")
+
+        try:
+            export_note_to_pdf(
+                pdf_path,
+                PDFExportPayload(
+                    title=self.current_note.title,
+                    content=self.current_note.content,
+                ),
+            )
+        except RuntimeError as error:
+            QtWidgets.QMessageBox.warning(self, "Błąd eksportu", str(error))
+            self.statusBar().showMessage("Nie udało się wyeksportować notatki do PDF")
+            return
+        except OSError as error:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Błąd zapisu",
+                f"Nie udało się zapisać pliku PDF: {error}",
+            )
+            self.statusBar().showMessage("Nie udało się zapisać pliku PDF")
+            return
+
+        QtWidgets.QMessageBox.information(
+            self,
+            "Eksport zakończony",
+            f"Wyeksportowano notatkę do pliku:\n{pdf_path}",
+        )
+        self.statusBar().showMessage(f"Wyeksportowano PDF: {pdf_path.name}")
 
     def _refresh_image_list(self) -> None:
         self.image_list.clear()
@@ -540,7 +625,10 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         self._apply_transcription_result(result)
-        self.statusBar().showMessage(f"Notatka została przepisana przez model {result.model_name}")
+        mode_label = TRANSCRIPTION_MODE_LABELS.get(result.transcription_mode, result.transcription_mode)
+        self.statusBar().showMessage(
+            f"Notatka została przepisana przez model {result.model_name} w trybie: {mode_label}"
+        )
 
     @QtCore.Slot(str)
     def _handle_ai_transcription_failure(self, message: str) -> None:

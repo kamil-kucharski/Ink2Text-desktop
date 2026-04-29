@@ -12,23 +12,54 @@ DEFAULT_FALLBACK_MODELS = (
     "gemini-2.5-flash",
     "gemini-3-flash-preview",
 )
+TRANSCRIPTION_MODE_LABELS = {
+    "faithful": "Wierna transkrypcja",
+    "structured": "Uporządkowane notatki",
+    "polished": "Lekko poprawione formatowanie",
+}
 
 
-def build_transcription_prompt() -> str:
-    return (
-        "Przepisz odręczne notatki z dostarczonych obrazów do czytelnego tekstu.\n"
+def build_transcription_prompt(mode: str = "faithful") -> str:
+    common_rules = (
         "Zachowaj oryginalny język notatek.\n"
-        "Zachowaj strukturę nagłówków, list wypunktowanych, list numerowanych i akapitów.\n"
-        "Nie dopisuj informacji, których nie ma na obrazach.\n"
         "Jeśli jakiś fragment jest nieczytelny, wpisz [nieczytelne].\n"
         "Zwróć wyłącznie gotową treść notatki bez komentarza wstępnego."
     )
+
+    if mode == "faithful":
+        return (
+            "Przepisz odręczne notatki z dostarczonych obrazów do czytelnego tekstu możliwie wiernie.\n"
+            "Zachowaj strukturę nagłówków, list wypunktowanych, list numerowanych i akapitów.\n"
+            "Nie dopisuj informacji, których nie ma na obrazach.\n"
+            f"{common_rules}"
+        )
+
+    if mode == "structured":
+        return (
+            "Przepisz odręczne notatki i uporządkuj je w przejrzystą strukturę.\n"
+            "Twórz czytelne nagłówki, podpunkty i krótkie listy, gdy pomagają zrozumieć materiał.\n"
+            "Zachowaj sens i wszystkie informacje z notatek, ale możesz poprawić kolejność i układ treści.\n"
+            "Nie wymyślaj nowych informacji.\n"
+            f"{common_rules}"
+        )
+
+    if mode == "polished":
+        return (
+            "Przepisz odręczne notatki do czytelnej, lekko dopracowanej formy.\n"
+            "Popraw drobne potknięcia stylistyczne, uprość układ i zadbaj o ładne formatowanie.\n"
+            "Nie zmieniaj znaczenia treści i nie dodawaj nowych informacji.\n"
+            "Zachowaj ważne nagłówki, listy i logiczny podział na sekcje.\n"
+            f"{common_rules}"
+        )
+
+    raise ValueError(f"Nieobsługiwany tryb transkrypcji: {mode}")
 
 
 @dataclass(slots=True)
 class TranscriptionResult:
     text: str
     model_name: str
+    transcription_mode: str
 
 
 class AIProviderError(Exception):
@@ -52,7 +83,11 @@ class InvalidProviderResponseError(AIProviderError):
 
 
 class AIProvider(Protocol):
-    def transcribe_images(self, image_paths: list[Path]) -> TranscriptionResult:
+    def transcribe_images(
+        self,
+        image_paths: list[Path],
+        transcription_mode: str = "faithful",
+    ) -> TranscriptionResult:
         raise NotImplementedError
 
 
@@ -75,14 +110,18 @@ class GeminiAIProvider:
         self.initial_backoff_seconds = max(0.0, initial_backoff_seconds)
         self.sleep_func = sleep_func
 
-    def transcribe_images(self, image_paths: list[Path]) -> TranscriptionResult:
+    def transcribe_images(
+        self,
+        image_paths: list[Path],
+        transcription_mode: str = "faithful",
+    ) -> TranscriptionResult:
         if not self.api_key:
             raise MissingAPIKeyError(self._missing_api_key_message())
         if not image_paths:
             raise ProviderRequestError("Brak przygotowanych obrazów do wysłania.")
 
         client = self._create_client()
-        prompt = build_transcription_prompt()
+        prompt = build_transcription_prompt(transcription_mode)
         contents = [prompt, *[self._build_image_part(path) for path in image_paths]]
         attempted_models: list[str] = []
         last_retryable_error: Exception | None = None
@@ -103,7 +142,11 @@ class GeminiAIProvider:
                     "Model nie zwrócił treści notatki. Spróbuj ponownie z innymi zdjęciami."
                 )
 
-            return TranscriptionResult(text=text, model_name=model_name)
+            return TranscriptionResult(
+                text=text,
+                model_name=model_name,
+                transcription_mode=transcription_mode,
+            )
 
         if last_retryable_error is not None:
             attempted_models_text = ", ".join(attempted_models)
