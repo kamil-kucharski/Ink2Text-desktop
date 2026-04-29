@@ -7,6 +7,11 @@ from pathlib import Path
 
 
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite"
+SUPPORTED_GEMINI_MODELS = (
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-3-flash-preview",
+)
 
 
 @dataclass(slots=True)
@@ -67,6 +72,17 @@ def load_app_config(base_dir: Path | None = None, env_path: Path | None = None) 
         config_path=config_path,
         load_error=load_error,
     )
+
+
+def save_app_config(config_path: Path, gemini_api_key: str, gemini_model: str) -> None:
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "gemini_api_key": gemini_api_key,
+        "gemini_model": gemini_model,
+    }
+    with config_path.open("w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False, indent=2)
+        file.write("\n")
 
 
 def _load_dotenv_file(env_path: Path) -> None:

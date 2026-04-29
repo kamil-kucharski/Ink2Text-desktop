@@ -5,11 +5,12 @@ from typing import Iterable
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from app.config import AppConfig
+from app.config import AppConfig, load_app_config, save_app_config
 from app.models import Note
-from app.services import AIProvider, AIProviderError, ImagePreparationService, TranscriptionResult
+from app.services import AIProvider, AIProviderError, GeminiAIProvider, ImagePreparationService, TranscriptionResult
 from app.storage import FileNoteRepository
 from app.ui.image_import import filter_supported_image_paths
+from app.ui.settings_dialog import AISettingsDialog
 
 
 class AITranscriptionWorker(QtCore.QObject):
@@ -70,11 +71,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_button = QtWidgets.QPushButton("Odśwież")
         self.import_images_button = QtWidgets.QPushButton("Importuj zdjęcia")
         self.transcribe_ai_button = QtWidgets.QPushButton("Przetwórz przez AI")
+        self.ai_settings_button = QtWidgets.QPushButton("Ustawienia AI")
         button_row.addWidget(self.new_button)
         button_row.addWidget(self.save_button)
         button_row.addWidget(self.refresh_button)
         button_row.addWidget(self.import_images_button)
         button_row.addWidget(self.transcribe_ai_button)
+        button_row.addWidget(self.ai_settings_button)
         button_row.addStretch()
 
         splitter = QtWidgets.QSplitter()
@@ -149,6 +152,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_button.clicked.connect(self.refresh_notes)
         self.import_images_button.clicked.connect(self._import_images)
         self.transcribe_ai_button.clicked.connect(self._transcribe_current_note_with_ai)
+        self.ai_settings_button.clicked.connect(self._open_ai_settings)
         self.move_image_earlier_button.clicked.connect(lambda: self._move_selected_image(-1))
         self.move_image_later_button.clicked.connect(lambda: self._move_selected_image(1))
         self.prepare_images_button.clicked.connect(self._prepare_images_for_ai)
@@ -356,6 +360,38 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ai_thread.finished.connect(self.ai_thread.deleteLater)
         self.ai_thread.finished.connect(self._finish_ai_transcription)
         self.ai_thread.start()
+
+    def _open_ai_settings(self) -> None:
+        dialog = AISettingsDialog(self.app_config, self)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+
+        try:
+            save_app_config(
+                self.app_config.config_path,
+                gemini_api_key=dialog.api_key,
+                gemini_model=dialog.model_name,
+            )
+        except OSError as error:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Błąd zapisu ustawień",
+                f"Nie udało się zapisać ustawień AI: {error}",
+            )
+            return
+
+        self.app_config = load_app_config(base_dir=self.repository.base_dir)
+        self.ai_provider = GeminiAIProvider(
+            api_key=self.app_config.gemini_api_key,
+            model_name=self.app_config.gemini_model,
+            config_path=self.app_config.config_path,
+        )
+        QtWidgets.QMessageBox.information(
+            self,
+            "Ustawienia zapisane",
+            "Zapisano ustawienia AI. Nowe wartości będą używane od razu.",
+        )
+        self.statusBar().showMessage(f"Zapisano ustawienia AI dla modelu {self.app_config.gemini_model}")
 
     def _refresh_image_list(self) -> None:
         self.image_list.clear()
