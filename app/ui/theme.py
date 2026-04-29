@@ -405,7 +405,7 @@ QLabel#ImageCounter {
     padding: 0 6px;
 }
 QLabel#ThumbnailEmpty {
-    min-height: 70px;
+    min-height: 52px;
     background: #fbfcff;
     border: 1px dashed #cdd6e6;
     border-radius: 16px;
@@ -416,7 +416,10 @@ QLabel#ThumbnailEmpty {
 QFrame#ImageThumbnailWidget {
     background: #ffffff;
     border: 1px solid #e1e7f0;
-    border-radius: 15px;
+    border-radius: 11px;
+}
+QFrame#ImageThumbnailWidget[active="true"] {
+    border: 2px solid #1e3a8a;
 }
 QFrame#ImageThumbnailWidget:hover {
     border-color: #b9c7df;
@@ -424,7 +427,8 @@ QFrame#ImageThumbnailWidget:hover {
 }
 QLabel#ThumbnailImage {
     background: #f1f5fb;
-    border-radius: 15px;
+    border: 1px solid transparent;
+    border-radius: 10px;
 }
 QLabel#PreviewImage {
     background: #fbfcff;
@@ -433,7 +437,7 @@ QLabel#PreviewImage {
     color: #6d7890;
 }
 QTextEdit#ContentEditor {
-    min-height: 210px;
+    min-height: 260px;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
     border-top: none;
@@ -502,15 +506,15 @@ QListWidget#ImageList {
 }
 QListWidget#ImageList::item {
     border-radius: 13px;
-    padding: 6px;
+    padding: 4px;
     margin: 0 2px;
 }
 QListWidget#ImageList::item:hover {
     background: #f1f5fb;
 }
 QListWidget#ImageList::item:selected {
-    background: #eef3ff;
-    border: 2px solid #1e3a8a;
+    background: transparent;
+    border: none;
 }
 QStatusBar {
     background: #fbfcff;
