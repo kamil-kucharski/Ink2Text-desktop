@@ -5,10 +5,34 @@ from typing import Iterable
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from app.config import AppConfig
 from app.models import Note
-from app.services import ImagePreparationService
+from app.services import AIProvider, AIProviderError, ImagePreparationService, TranscriptionResult
 from app.storage import FileNoteRepository
 from app.ui.image_import import filter_supported_image_paths
+
+
+class AITranscriptionWorker(QtCore.QObject):
+    succeeded = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
+    finished = QtCore.Signal()
+
+    def __init__(self, ai_provider: AIProvider, image_paths: list[Path]) -> None:
+        super().__init__()
+        self.ai_provider = ai_provider
+        self.image_paths = image_paths
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            result = self.ai_provider.transcribe_images(self.image_paths)
+            self.succeeded.emit(result)
+        except AIProviderError as error:
+            self.failed.emit(str(error))
+        except Exception as error:  # pragma: no cover - osłona dla nieprzewidzianych błędów
+            self.failed.emit(f"Wystąpił nieoczekiwany błąd podczas przetwarzania AI: {error}")
+        finally:
+            self.finished.emit()
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -16,11 +40,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self,
         repository: FileNoteRepository,
         image_preparation_service: ImagePreparationService,
+        ai_provider: AIProvider,
+        app_config: AppConfig,
     ) -> None:
         super().__init__()
         self.repository = repository
         self.image_preparation_service = image_preparation_service
+        self.ai_provider = ai_provider
+        self.app_config = app_config
         self.current_note: Note | None = None
+        self.ai_thread: QtCore.QThread | None = None
+        self.ai_worker: AITranscriptionWorker | None = None
 
         self.setWindowTitle("Notatki AI Desktop")
         self.resize(1100, 720)
@@ -39,10 +69,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.save_button = QtWidgets.QPushButton("Zapisz")
         self.refresh_button = QtWidgets.QPushButton("Odśwież")
         self.import_images_button = QtWidgets.QPushButton("Importuj zdjęcia")
+        self.transcribe_ai_button = QtWidgets.QPushButton("Przetwórz przez AI")
         button_row.addWidget(self.new_button)
         button_row.addWidget(self.save_button)
         button_row.addWidget(self.refresh_button)
         button_row.addWidget(self.import_images_button)
+        button_row.addWidget(self.transcribe_ai_button)
         button_row.addStretch()
 
         splitter = QtWidgets.QSplitter()
@@ -116,6 +148,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.save_button.clicked.connect(self._save_current_note)
         self.refresh_button.clicked.connect(self.refresh_notes)
         self.import_images_button.clicked.connect(self._import_images)
+        self.transcribe_ai_button.clicked.connect(self._transcribe_current_note_with_ai)
         self.move_image_earlier_button.clicked.connect(lambda: self._move_selected_image(-1))
         self.move_image_later_button.clicked.connect(lambda: self._move_selected_image(1))
         self.prepare_images_button.clicked.connect(self._prepare_images_for_ai)
@@ -277,6 +310,53 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.statusBar().showMessage(f"Przygotowano zdjęć do AI: {len(prepared_images)}")
 
+    def _transcribe_current_note_with_ai(self) -> None:
+        if self.current_note is None:
+            return
+        if self.ai_thread is not None:
+            self.statusBar().showMessage("Przetwarzanie AI już trwa")
+            return
+        if self.app_config.load_error and not self.app_config.gemini_api_key:
+            QtWidgets.QMessageBox.warning(self, "Błąd konfiguracji", self.app_config.load_error)
+            self.statusBar().showMessage("Popraw konfigurację AI i spróbuj ponownie")
+            return
+
+        self._sync_form_to_current_note()
+        if not self.current_note.image_paths:
+            self.statusBar().showMessage("Dodaj zdjęcia przed uruchomieniem AI")
+            return
+
+        try:
+            prepared_images = self.image_preparation_service.prepare_note_images(
+                self.current_note,
+                self.repository,
+            )
+        except RuntimeError as error:
+            QtWidgets.QMessageBox.warning(self, "Brak zależności", str(error))
+            self.statusBar().showMessage("Nie udało się przygotować zdjęć do AI")
+            return
+
+        prepared_paths = [image.prepared_path for image in prepared_images]
+        if not prepared_paths:
+            self.statusBar().showMessage("Nie udało się przygotować zdjęć do AI")
+            return
+
+        self._set_ai_busy(True)
+        self.statusBar().showMessage("Trwa przetwarzanie notatki przez AI...")
+
+        self.ai_thread = QtCore.QThread(self)
+        self.ai_worker = AITranscriptionWorker(self.ai_provider, prepared_paths)
+        self.ai_worker.moveToThread(self.ai_thread)
+
+        self.ai_thread.started.connect(self.ai_worker.run)
+        self.ai_worker.succeeded.connect(self._handle_ai_transcription_success)
+        self.ai_worker.failed.connect(self._handle_ai_transcription_failure)
+        self.ai_worker.finished.connect(self.ai_thread.quit)
+        self.ai_worker.finished.connect(self.ai_worker.deleteLater)
+        self.ai_thread.finished.connect(self.ai_thread.deleteLater)
+        self.ai_thread.finished.connect(self._finish_ai_transcription)
+        self.ai_thread.start()
+
     def _refresh_image_list(self) -> None:
         self.image_list.clear()
         self.image_preview.clear()
@@ -414,3 +494,64 @@ class MainWindow(QtWidgets.QMainWindow):
             if item.data(QtCore.Qt.ItemDataRole.UserRole) == note_id:
                 return True
         return False
+
+    @QtCore.Slot(object)
+    def _handle_ai_transcription_success(self, result: object) -> None:
+        if not isinstance(result, TranscriptionResult):
+            self._handle_ai_transcription_failure(
+                "Model zwrócił odpowiedź w nieobsługiwanym formacie."
+            )
+            return
+
+        self._apply_transcription_result(result)
+        self.statusBar().showMessage(f"Notatka została przepisana przez model {result.model_name}")
+
+    @QtCore.Slot(str)
+    def _handle_ai_transcription_failure(self, message: str) -> None:
+        QtWidgets.QMessageBox.warning(self, "Błąd AI", message)
+        self.statusBar().showMessage("Nie udało się przetworzyć notatki przez AI")
+
+    @QtCore.Slot()
+    def _finish_ai_transcription(self) -> None:
+        self._set_ai_busy(False)
+        self.ai_worker = None
+        self.ai_thread = None
+
+    def _apply_transcription_result(self, result: TranscriptionResult) -> None:
+        existing_text = self.content_input.toPlainText().strip()
+        transcription_text = result.text.strip()
+
+        if existing_text:
+            decision = self._ask_how_to_apply_transcription()
+            if decision == "cancel":
+                self.statusBar().showMessage("Anulowano wstawianie wyniku AI")
+                return
+            if decision == "append":
+                merged_text = f"{self.content_input.toPlainText().rstrip()}\n\n{transcription_text}"
+                self.content_input.setPlainText(merged_text)
+                return
+
+        self.content_input.setPlainText(transcription_text)
+
+    def _ask_how_to_apply_transcription(self) -> str:
+        message_box = QtWidgets.QMessageBox(self)
+        message_box.setWindowTitle("Treść już istnieje")
+        message_box.setText("Notatka ma już treść. Jak chcesz wstawić wynik AI?")
+        replace_button = message_box.addButton("Zastąp treść", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        append_button = message_box.addButton("Dopisz na końcu", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        cancel_button = message_box.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
+        message_box.exec()
+
+        clicked_button = message_box.clickedButton()
+        if clicked_button == replace_button:
+            return "replace"
+        if clicked_button == append_button:
+            return "append"
+        if clicked_button == cancel_button:
+            return "cancel"
+        return "cancel"
+
+    def _set_ai_busy(self, is_busy: bool) -> None:
+        self.transcribe_ai_button.setDisabled(is_busy)
+        self.prepare_images_button.setDisabled(is_busy)
+        self.import_images_button.setDisabled(is_busy)
