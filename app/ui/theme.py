@@ -481,25 +481,32 @@ QTextEdit#ContentEditor {
     font-size: 14px;
 }
 QToolBar#EditorToolbar {
-    background: #fbfcff;
+    background: #f8fafd;
     border: 1px solid #dfe5ef;
     border-radius: 0;
-    spacing: 8px;
-    padding: 7px;
+    spacing: 6px;
+    padding: 8px 10px;
 }
 QToolBar#EditorToolbar QToolButton {
-    min-width: 32px;
-    min-height: 32px;
-    border-radius: 9px;
+    min-width: 34px;
+    min-height: 34px;
+    border-radius: 10px;
     border: 1px solid transparent;
     background: transparent;
+    color: #172b65;
 }
 QToolBar#EditorToolbar QToolButton:hover {
     background: #eef3ff;
+    border-color: #dbe5ff;
 }
 QToolBar#EditorToolbar QToolButton:checked {
     background: #e4ecff;
     border-color: #cbd8ff;
+}
+QToolBar#EditorToolbar::separator {
+    width: 1px;
+    background: #e2e8f2;
+    margin: 7px 5px;
 }
 QListWidget#NoteList {
     background: transparent;

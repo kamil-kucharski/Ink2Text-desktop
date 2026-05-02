@@ -1497,9 +1497,15 @@ class MainWindow(QtWidgets.QMainWindow):
         toolbar.setObjectName("EditorToolbar")
         toolbar.setMovable(False)
         toolbar.setFloatable(False)
-        toolbar.setIconSize(QtCore.QSize(16, 16))
+        toolbar.setIconSize(QtCore.QSize(22, 22))
         self.editor_toolbar = toolbar
 
+        self.undo_action = toolbar.addAction(self._build_toolbar_icon("undo"), "")
+        self.undo_action.setToolTip("Cofnij")
+        self.redo_action = toolbar.addAction(self._build_toolbar_icon("redo"), "")
+        self.redo_action.setToolTip("Ponów")
+
+        toolbar.addSeparator()
         self.bold_action = toolbar.addAction(self._build_toolbar_icon("bold"), "")
         self.bold_action.setCheckable(True)
         self.bold_action.setToolTip("Pogrubienie")
@@ -1511,12 +1517,43 @@ class MainWindow(QtWidgets.QMainWindow):
         self.underline_action = toolbar.addAction(self._build_toolbar_icon("underline"), "")
         self.underline_action.setCheckable(True)
         self.underline_action.setToolTip("Podkreślenie")
+        self.strike_action = toolbar.addAction(self._build_toolbar_icon("strike"), "")
+        self.strike_action.setCheckable(True)
+        self.strike_action.setToolTip("Przekreślenie")
+
+        toolbar.addSeparator()
+        self.text_color_action = toolbar.addAction(self._build_toolbar_icon("text-color"), "")
+        self.text_color_action.setToolTip("Kolor tekstu")
+        self.highlight_action = toolbar.addAction(self._build_toolbar_icon("highlight"), "")
+        self.highlight_action.setToolTip("Kolor podświetlenia")
+        self.clear_format_action = toolbar.addAction(self._build_toolbar_icon("clear-format"), "")
+        self.clear_format_action.setToolTip("Wyczyść formatowanie")
 
         toolbar.addSeparator()
         self.bulleted_list_action = toolbar.addAction(self._build_toolbar_icon("bulleted-list"), "")
         self.bulleted_list_action.setToolTip("Lista punktowana")
         self.numbered_list_action = toolbar.addAction(self._build_toolbar_icon("numbered-list"), "")
         self.numbered_list_action.setToolTip("Lista numerowana")
+        self.decrease_indent_action = toolbar.addAction(self._build_toolbar_icon("outdent"), "")
+        self.decrease_indent_action.setToolTip("Zmniejsz wcięcie")
+        self.increase_indent_action = toolbar.addAction(self._build_toolbar_icon("indent"), "")
+        self.increase_indent_action.setToolTip("Zwiększ wcięcie")
+
+        toolbar.addSeparator()
+        self.align_group = QtGui.QActionGroup(self)
+        self.align_left_action = toolbar.addAction(self._build_toolbar_icon("align-left"), "")
+        self.align_center_action = toolbar.addAction(self._build_toolbar_icon("align-center"), "")
+        self.align_right_action = toolbar.addAction(self._build_toolbar_icon("align-right"), "")
+        self.align_justify_action = toolbar.addAction(self._build_toolbar_icon("align-justify"), "")
+        for action, tooltip in (
+            (self.align_left_action, "Wyrównaj do lewej"),
+            (self.align_center_action, "Wyśrodkuj"),
+            (self.align_right_action, "Wyrównaj do prawej"),
+            (self.align_justify_action, "Wyjustuj"),
+        ):
+            action.setCheckable(True)
+            action.setToolTip(tooltip)
+            self.align_group.addAction(action)
 
         toolbar.addSeparator()
         self.font_family_input = MenuSelectButton()
@@ -1529,21 +1566,47 @@ class MainWindow(QtWidgets.QMainWindow):
         self.font_size_input = MenuSelectButton()
         self.font_size_input.setObjectName("FontSizeButton")
         self.font_size_input.setMinimumWidth(72)
-        for size in ("10", "11", "12", "13", "14", "16", "18", "20", "24", "28", "32"):
+        for size in ("8", "9", "10", "11", "12", "13", "14", "16", "18", "20", "24", "28", "32", "36", "48"):
             self.font_size_input.addItem(size)
         toolbar.addWidget(self.font_size_input)
+        self.decrease_font_size_action = toolbar.addAction(self._build_toolbar_icon("font-smaller"), "")
+        self.decrease_font_size_action.setToolTip("Zmniejsz czcionkę")
+        self.increase_font_size_action = toolbar.addAction(self._build_toolbar_icon("font-larger"), "")
+        self.increase_font_size_action.setToolTip("Zwiększ czcionkę")
 
+        self.undo_action.triggered.connect(lambda: self.content_input.undo())
+        self.redo_action.triggered.connect(lambda: self.content_input.redo())
         self.bold_action.triggered.connect(self._toggle_bold)
         self.italic_action.triggered.connect(self._toggle_italic)
         self.underline_action.triggered.connect(self._toggle_underline)
+        self.strike_action.triggered.connect(self._toggle_strike)
+        self.text_color_action.triggered.connect(self._choose_text_color)
+        self.highlight_action.triggered.connect(self._choose_highlight_color)
+        self.clear_format_action.triggered.connect(self._clear_selection_format)
         self.bulleted_list_action.triggered.connect(
             lambda: self._insert_list(QtGui.QTextListFormat.Style.ListDisc)
         )
         self.numbered_list_action.triggered.connect(
             lambda: self._insert_list(QtGui.QTextListFormat.Style.ListDecimal)
         )
+        self.decrease_indent_action.triggered.connect(lambda: self._change_block_indent(-1))
+        self.increase_indent_action.triggered.connect(lambda: self._change_block_indent(1))
+        self.align_left_action.triggered.connect(
+            lambda: self.content_input.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+        )
+        self.align_center_action.triggered.connect(
+            lambda: self.content_input.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter)
+        )
+        self.align_right_action.triggered.connect(
+            lambda: self.content_input.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        )
+        self.align_justify_action.triggered.connect(
+            lambda: self.content_input.setAlignment(QtCore.Qt.AlignmentFlag.AlignJustify)
+        )
         self.font_family_input.currentTextChanged.connect(self._set_font_family)
         self.font_size_input.currentTextChanged.connect(self._set_font_size)
+        self.decrease_font_size_action.triggered.connect(lambda: self._adjust_font_size(-1))
+        self.increase_font_size_action.triggered.connect(lambda: self._adjust_font_size(1))
 
     def _apply_visual_treatment(self) -> None:
         button_variants = {
@@ -1598,8 +1661,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bold_action.setToolTip(self._tr("tooltip_bold"))
         self.italic_action.setToolTip(self._tr("tooltip_italic"))
         self.underline_action.setToolTip(self._tr("tooltip_underline"))
+        self.strike_action.setToolTip(self._tr("tooltip_strike"))
+        self.undo_action.setToolTip(self._tr("tooltip_undo"))
+        self.redo_action.setToolTip(self._tr("tooltip_redo"))
+        self.text_color_action.setToolTip(self._tr("tooltip_text_color"))
+        self.highlight_action.setToolTip(self._tr("tooltip_highlight"))
+        self.clear_format_action.setToolTip(self._tr("tooltip_clear_format"))
         self.bulleted_list_action.setToolTip(self._tr("tooltip_bulleted_list"))
         self.numbered_list_action.setToolTip(self._tr("tooltip_numbered_list"))
+        self.decrease_indent_action.setToolTip(self._tr("tooltip_decrease_indent"))
+        self.increase_indent_action.setToolTip(self._tr("tooltip_increase_indent"))
+        self.decrease_font_size_action.setToolTip(self._tr("tooltip_decrease_font_size"))
+        self.increase_font_size_action.setToolTip(self._tr("tooltip_increase_font_size"))
+        self.align_left_action.setToolTip(self._tr("tooltip_align_left"))
+        self.align_center_action.setToolTip(self._tr("tooltip_align_center"))
+        self.align_right_action.setToolTip(self._tr("tooltip_align_right"))
+        self.align_justify_action.setToolTip(self._tr("tooltip_align_justify"))
         self._rebuild_transcription_mode_button()
         self._update_note_count_badge()
         self._update_note_meta_label()
@@ -1760,44 +1837,120 @@ class MainWindow(QtWidgets.QMainWindow):
         return local_value.strftime("%d.%m.%Y, %H:%M")
 
     def _build_toolbar_icon(self, kind: str) -> QtGui.QIcon:
-        pixmap = QtGui.QPixmap(18, 18)
+        pixmap = QtGui.QPixmap(24, 24)
         pixmap.fill(QtCore.Qt.GlobalColor.transparent)
 
         painter = QtGui.QPainter(pixmap)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        pen = QtGui.QPen(QtGui.QColor("#1f2937"))
-        pen.setWidth(2)
+        pen = QtGui.QPen(QtGui.QColor("#172b65"))
+        pen.setWidthF(1.9)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
-        painter.setBrush(QtGui.QColor("#1f2937"))
+        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
 
         if kind == "bold":
-            font = QtGui.QFont("DejaVu Sans", 11)
+            font = QtGui.QFont("DejaVu Sans", 13)
             font.setBold(True)
             painter.setFont(font)
             painter.drawText(pixmap.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "B")
         elif kind == "italic":
-            font = QtGui.QFont("DejaVu Sans", 11)
+            font = QtGui.QFont("DejaVu Sans", 13)
             font.setItalic(True)
             painter.setFont(font)
             painter.drawText(pixmap.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "I")
         elif kind == "underline":
-            font = QtGui.QFont("DejaVu Sans", 10)
+            font = QtGui.QFont("DejaVu Sans", 12)
             painter.setFont(font)
-            painter.drawText(pixmap.rect().adjusted(0, -1, 0, 0), QtCore.Qt.AlignmentFlag.AlignCenter, "U")
-            painter.drawLine(4, 14, 14, 14)
+            painter.drawText(pixmap.rect().adjusted(0, -2, 0, 0), QtCore.Qt.AlignmentFlag.AlignCenter, "U")
+            painter.drawLine(6, 18, 18, 18)
+        elif kind == "strike":
+            font = QtGui.QFont("DejaVu Sans", 12)
+            painter.setFont(font)
+            painter.drawText(pixmap.rect().adjusted(0, -1, 0, 0), QtCore.Qt.AlignmentFlag.AlignCenter, "S")
+            painter.drawLine(6, 12, 18, 12)
         elif kind == "bulleted-list":
-            for y in (4, 9, 14):
-                painter.drawEllipse(QtCore.QPointF(4, y), 1.3, 1.3)
-                painter.drawLine(8, y, 15, y)
+            painter.setBrush(QtGui.QColor("#172b65"))
+            for y in (6, 12, 18):
+                painter.drawEllipse(QtCore.QPointF(5, y), 1.5, 1.5)
+                painter.drawLine(10, y, 19, y)
         elif kind == "numbered-list":
-            font = QtGui.QFont("DejaVu Sans", 6)
+            font = QtGui.QFont("DejaVu Sans", 7)
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(QtCore.QRect(0, 0, 6, 6), QtCore.Qt.AlignmentFlag.AlignCenter, "1")
-            painter.drawText(QtCore.QRect(0, 5, 6, 6), QtCore.Qt.AlignmentFlag.AlignCenter, "2")
-            painter.drawText(QtCore.QRect(0, 10, 6, 6), QtCore.Qt.AlignmentFlag.AlignCenter, "3")
-            for y in (4, 9, 14):
-                painter.drawLine(8, y, 15, y)
+            painter.drawText(QtCore.QRect(1, 3, 7, 7), QtCore.Qt.AlignmentFlag.AlignCenter, "1")
+            painter.drawText(QtCore.QRect(1, 9, 7, 7), QtCore.Qt.AlignmentFlag.AlignCenter, "2")
+            painter.drawText(QtCore.QRect(1, 15, 7, 7), QtCore.Qt.AlignmentFlag.AlignCenter, "3")
+            for y in (6, 12, 18):
+                painter.drawLine(10, y, 19, y)
+        elif kind in {"align-left", "align-center", "align-right", "align-justify"}:
+            line_widths = {
+                "align-left": (15, 11, 15, 9),
+                "align-center": (13, 17, 13, 17),
+                "align-right": (15, 11, 15, 9),
+                "align-justify": (16, 16, 16, 16),
+            }[kind]
+            y_positions = (6, 10, 14, 18)
+            for width, y in zip(line_widths, y_positions):
+                if kind == "align-center":
+                    x1 = 12 - width / 2
+                elif kind == "align-right":
+                    x1 = 20 - width
+                else:
+                    x1 = 4
+                painter.drawLine(QtCore.QPointF(x1, y), QtCore.QPointF(x1 + width, y))
+        elif kind == "indent":
+            painter.drawLine(10, 6, 20, 6)
+            painter.drawLine(14, 12, 20, 12)
+            painter.drawLine(10, 18, 20, 18)
+            painter.drawLine(4, 9, 8, 12)
+            painter.drawLine(4, 15, 8, 12)
+        elif kind == "outdent":
+            painter.drawLine(10, 6, 20, 6)
+            painter.drawLine(14, 12, 20, 12)
+            painter.drawLine(10, 18, 20, 18)
+            painter.drawLine(8, 9, 4, 12)
+            painter.drawLine(8, 15, 4, 12)
+        elif kind == "undo":
+            painter.drawLine(8, 7, 4, 11)
+            painter.drawLine(8, 15, 4, 11)
+            painter.drawArc(QtCore.QRectF(5, 7, 14, 10), 25 * 16, -245 * 16)
+        elif kind == "redo":
+            painter.drawLine(16, 7, 20, 11)
+            painter.drawLine(16, 15, 20, 11)
+            painter.drawArc(QtCore.QRectF(5, 7, 14, 10), 155 * 16, 245 * 16)
+        elif kind == "text-color":
+            font = QtGui.QFont("DejaVu Sans", 12)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(QtCore.QRect(4, 2, 16, 16), QtCore.Qt.AlignmentFlag.AlignCenter, "A")
+            painter.setPen(QtGui.QPen(QtGui.QColor("#2563eb"), 3))
+            painter.drawLine(6, 20, 18, 20)
+        elif kind == "highlight":
+            painter.setPen(QtGui.QPen(QtGui.QColor("#172b65"), 1.7))
+            painter.drawRoundedRect(QtCore.QRectF(5, 5, 14, 11), 2, 2)
+            painter.fillRect(QtCore.QRectF(7, 13, 10, 5), QtGui.QColor("#facc15"))
+            painter.drawLine(7, 19, 17, 19)
+        elif kind == "clear-format":
+            font = QtGui.QFont("DejaVu Sans", 12)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(QtCore.QRect(3, 2, 14, 16), QtCore.Qt.AlignmentFlag.AlignCenter, "A")
+            painter.drawLine(14, 16, 20, 20)
+            painter.drawLine(20, 16, 14, 20)
+        elif kind == "font-larger":
+            font = QtGui.QFont("DejaVu Sans", 12)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(QtCore.QRect(3, 4, 13, 15), QtCore.Qt.AlignmentFlag.AlignCenter, "A")
+            painter.drawLine(17, 8, 17, 16)
+            painter.drawLine(13, 12, 21, 12)
+        elif kind == "font-smaller":
+            font = QtGui.QFont("DejaVu Sans", 12)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(QtCore.QRect(3, 4, 13, 15), QtCore.Qt.AlignmentFlag.AlignCenter, "A")
+            painter.drawLine(13, 12, 21, 12)
         else:
             font = QtGui.QFont("DejaVu Sans", 9)
             painter.setFont(font)
@@ -1828,6 +1981,56 @@ class MainWindow(QtWidgets.QMainWindow):
         char_format = QtGui.QTextCharFormat()
         char_format.setFontUnderline(self.underline_action.isChecked())
         self._merge_char_format(char_format)
+
+    def _toggle_strike(self) -> None:
+        char_format = QtGui.QTextCharFormat()
+        char_format.setFontStrikeOut(self.strike_action.isChecked())
+        self._merge_char_format(char_format)
+
+    def _choose_text_color(self) -> None:
+        color = QtWidgets.QColorDialog.getColor(
+            self.content_input.textColor(),
+            self,
+            self._tr("dialog_text_color"),
+        )
+        if not color.isValid():
+            return
+
+        char_format = QtGui.QTextCharFormat()
+        char_format.setForeground(color)
+        self._merge_char_format(char_format)
+
+    def _choose_highlight_color(self) -> None:
+        color = QtWidgets.QColorDialog.getColor(
+            QtGui.QColor("#fff3a3"),
+            self,
+            self._tr("dialog_highlight_color"),
+        )
+        if not color.isValid():
+            return
+
+        char_format = QtGui.QTextCharFormat()
+        char_format.setBackground(color)
+        self._merge_char_format(char_format)
+
+    def _clear_selection_format(self) -> None:
+        cursor = self.content_input.textCursor()
+        if not cursor.hasSelection():
+            cursor.select(QtGui.QTextCursor.SelectionType.WordUnderCursor)
+
+        clean_format = QtGui.QTextCharFormat()
+        cursor.setCharFormat(clean_format)
+        self.content_input.setTextCursor(cursor)
+        self.content_input.setCurrentCharFormat(clean_format)
+
+    def _change_block_indent(self, delta: int) -> None:
+        cursor = self.content_input.textCursor()
+        cursor.beginEditBlock()
+        block_format = cursor.blockFormat()
+        block_format.setIndent(max(0, block_format.indent() + delta))
+        cursor.setBlockFormat(block_format)
+        cursor.endEditBlock()
+        self.content_input.setTextCursor(cursor)
 
     def _insert_list(self, list_style: QtGui.QTextListFormat.Style) -> None:
         cursor = self.content_input.textCursor()
@@ -1864,6 +2067,22 @@ class MainWindow(QtWidgets.QMainWindow):
         char_format.setFontPointSize(size)
         self._merge_char_format(char_format)
 
+    def _adjust_font_size(self, delta: int) -> None:
+        current_format = self.content_input.currentCharFormat()
+        current_size = (
+            current_format.fontPointSize()
+            or self.content_input.fontPointSize()
+            or self.content_input.font().pointSizeF()
+            or 12
+        )
+        next_size = max(1, current_size + delta)
+        char_format = QtGui.QTextCharFormat()
+        char_format.setFontPointSize(next_size)
+        self._merge_char_format(char_format)
+        self._updating_format_controls = True
+        self.font_size_input.setCurrentText(str(int(next_size)))
+        self._updating_format_controls = False
+
     def _sync_format_controls(self) -> None:
         if not hasattr(self, "content_input"):
             return
@@ -1874,6 +2093,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bold_action.setChecked(font.bold())
         self.italic_action.setChecked(font.italic())
         self.underline_action.setChecked(font.underline())
+        self.strike_action.setChecked(font.strikeOut())
+        alignment = self.content_input.alignment()
+        self.align_left_action.setChecked(bool(alignment & QtCore.Qt.AlignmentFlag.AlignLeft))
+        self.align_center_action.setChecked(bool(alignment & QtCore.Qt.AlignmentFlag.AlignHCenter))
+        self.align_right_action.setChecked(bool(alignment & QtCore.Qt.AlignmentFlag.AlignRight))
+        self.align_justify_action.setChecked(bool(alignment & QtCore.Qt.AlignmentFlag.AlignJustify))
         self.font_family_input.setCurrentText(font.family())
         point_size = char_format.fontPointSize() or self.content_input.fontPointSize() or 12
         self.font_size_input.setCurrentText(str(int(point_size)))
