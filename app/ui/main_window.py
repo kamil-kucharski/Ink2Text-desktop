@@ -831,11 +831,12 @@ class ResponsiveEditorToolbar(QtWidgets.QFrame):
         self._actions: list[QtGui.QAction] = []
         self._icon_size = QtCore.QSize(22, 22)
         self._row_count = 1
-        self._layout = QtWidgets.QGridLayout(self)
-        self._layout.setContentsMargins(10, 8, 10, 8)
-        self._layout.setHorizontalSpacing(6)
-        self._layout.setVerticalSpacing(6)
+        self._margins = QtCore.QMargins(10, 8, 10, 8)
+        self._horizontal_spacing = 6
+        self._vertical_spacing = 6
+        self._row_height = 38
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Maximum)
+        self.setMinimumWidth(0)
 
     def setMovable(self, _is_movable: bool) -> None:
         return
@@ -879,47 +880,124 @@ class ResponsiveEditorToolbar(QtWidgets.QFrame):
         super().resizeEvent(event)
         self._reflow()
 
+    def sizeHint(self) -> QtCore.QSize:
+        return QtCore.QSize(640, self._toolbar_height())
+
+    def minimumSizeHint(self) -> QtCore.QSize:
+        return QtCore.QSize(120, self._toolbar_height())
+
     def _add_item(self, widget: QtWidgets.QWidget) -> None:
+        widget.setParent(self)
+        widget.show()
         self._items.append(widget)
         QtCore.QTimer.singleShot(0, self._reflow)
 
     def _reflow(self) -> None:
-        while self._layout.count():
-            item = self._layout.takeAt(0)
-            if item.widget() is not None:
-                self._layout.removeWidget(item.widget())
-
-        available_width = max(220, self.width() - 20)
-        row = 0
-        column = 0
-        row_width = 0
-        spacing = self._layout.horizontalSpacing()
+        if not self._items:
+            return
 
         for widget in self._items:
-            item_width = self._item_width(widget)
-            next_width = item_width if row_width == 0 else row_width + spacing + item_width
+            widget.hide()
+
+        available_width = max(120, self.width() - self._margins.left() - self._margins.right())
+        row = 0
+        row_width = 0
+        rows: list[list[QtWidgets.QWidget]] = [[], []]
+
+        for leading_separator, widgets in self._toolbar_groups():
+            if not widgets:
+                continue
+
+            group_widgets = list(widgets)
+            include_separator = leading_separator is not None and row_width > 0
+            group_items = (
+                [leading_separator, *group_widgets] if include_separator else group_widgets
+            )
+            group_width = self._widgets_width(group_items)
+            next_width = (
+                group_width
+                if row_width == 0
+                else row_width + self._horizontal_spacing + group_width
+            )
+
             if row == 0 and row_width > 0 and next_width > available_width:
                 row = 1
-                column = 0
                 row_width = 0
+                include_separator = False
+                group_items = group_widgets
+                group_width = self._widgets_width(group_items)
 
-            self._layout.addWidget(widget, row, column)
-            row_width = item_width if row_width == 0 else row_width + spacing + item_width
-            column += 1
+            rows[row].extend(widget for widget in group_items if widget is not None)
+            row_width = group_width if row_width == 0 else row_width + self._horizontal_spacing + group_width
 
-        self._row_count = row + 1
-        margins = self._layout.contentsMargins()
-        row_height = 36
-        height = margins.top() + margins.bottom() + self._row_count * row_height
-        if self._row_count > 1:
-            height += self._layout.verticalSpacing()
-        self.setMinimumHeight(height)
-        self.setMaximumHeight(height)
+        self._row_count = 2 if rows[1] else 1
+        self._position_row_widgets(rows[0], 0)
+        self._position_row_widgets(rows[1], 1)
+        height = self._toolbar_height()
+        if self.minimumHeight() != height:
+            self.setMinimumHeight(height)
+            self.setMaximumHeight(height)
         self.updateGeometry()
+
+    def _position_row_widgets(self, widgets: list[QtWidgets.QWidget], row: int) -> None:
+        x = self._margins.left()
+        y = self._margins.top() + row * (self._row_height + self._vertical_spacing)
+        for widget in widgets:
+            width = self._item_width(widget)
+            if widget.objectName() == "ToolbarSeparator":
+                separator_height = 22
+                widget.setGeometry(
+                    x + (width - 1) // 2,
+                    y + (self._row_height - separator_height) // 2,
+                    1,
+                    separator_height,
+                )
+            else:
+                height = min(max(widget.sizeHint().height(), widget.minimumSizeHint().height(), 30), self._row_height)
+                widget.setGeometry(x, y + (self._row_height - height) // 2, width, height)
+            widget.show()
+            x += width + self._horizontal_spacing
+
+    def _toolbar_height(self) -> int:
+        height = self._margins.top() + self._margins.bottom() + self._row_count * self._row_height
+        if self._row_count > 1:
+            height += self._vertical_spacing
+        return height
+
+    def _toolbar_groups(self) -> list[tuple[QtWidgets.QWidget | None, list[QtWidgets.QWidget]]]:
+        groups: list[tuple[QtWidgets.QWidget | None, list[QtWidgets.QWidget]]] = []
+        leading_separator: QtWidgets.QWidget | None = None
+        current_group: list[QtWidgets.QWidget] = []
+
+        for widget in self._items:
+            if widget.objectName() == "ToolbarSeparator":
+                if current_group:
+                    groups.append((leading_separator, current_group))
+                    current_group = []
+                leading_separator = widget
+                continue
+
+            current_group.append(widget)
+
+        if current_group:
+            groups.append((leading_separator, current_group))
+
+        return groups
+
+    def _widgets_width(self, widgets: list[QtWidgets.QWidget | None]) -> int:
+        visible_widgets = [widget for widget in widgets if widget is not None]
+        if not visible_widgets:
+            return 0
+
+        return sum(self._item_width(widget) for widget in visible_widgets) + self._horizontal_spacing * (
+            len(visible_widgets) - 1
+        )
 
     def _item_width(self, widget: QtWidgets.QWidget) -> int:
         if widget.objectName() == "ToolbarSeparator":
             return 11
+        if widget.maximumWidth() < 16777215:
+            return widget.maximumWidth()
         return max(widget.minimumSizeHint().width(), widget.sizeHint().width(), widget.minimumWidth())
 
 
@@ -1619,6 +1697,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.strike_action = toolbar.addAction(self._build_toolbar_icon("strike"), "")
         self.strike_action.setCheckable(True)
         self.strike_action.setToolTip("Przekreślenie")
+        self.subscript_action = toolbar.addAction(self._build_toolbar_icon("subscript"), "")
+        self.subscript_action.setCheckable(True)
+        self.subscript_action.setToolTip("Indeks dolny")
+        self.superscript_action = toolbar.addAction(self._build_toolbar_icon("superscript"), "")
+        self.superscript_action.setCheckable(True)
+        self.superscript_action.setToolTip("Indeks górny")
 
         toolbar.addSeparator()
         self.text_color_action = toolbar.addAction(self._build_toolbar_icon("text-color"), "")
@@ -1631,17 +1715,19 @@ class MainWindow(QtWidgets.QMainWindow):
         toolbar.addSeparator()
         self.font_family_input = MenuSelectButton()
         self.font_family_input.setObjectName("FontFamilyButton")
-        self.font_family_input.setMinimumWidth(220)
+        self.font_family_input.setFixedWidth(158)
         for family in QtGui.QFontDatabase.families():
             self.font_family_input.addItem(family, family)
         toolbar.addWidget(self.font_family_input)
 
         self.font_size_input = MenuSelectButton()
         self.font_size_input.setObjectName("FontSizeButton")
-        self.font_size_input.setMinimumWidth(72)
+        self.font_size_input.setFixedWidth(64)
         for size in ("8", "9", "10", "11", "12", "13", "14", "16", "18", "20", "24", "28", "32", "36", "48"):
             self.font_size_input.addItem(size)
         toolbar.addWidget(self.font_size_input)
+
+        toolbar.addSeparator()
         self.decrease_font_size_action = toolbar.addAction(self._build_toolbar_icon("font-smaller"), "")
         self.decrease_font_size_action.setToolTip("Zmniejsz czcionkę")
         self.increase_font_size_action = toolbar.addAction(self._build_toolbar_icon("font-larger"), "")
@@ -1681,6 +1767,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.italic_action.triggered.connect(self._toggle_italic)
         self.underline_action.triggered.connect(self._toggle_underline)
         self.strike_action.triggered.connect(self._toggle_strike)
+        self.subscript_action.triggered.connect(
+            lambda: self._toggle_vertical_alignment(
+                self.subscript_action,
+                QtGui.QTextCharFormat.VerticalAlignment.AlignSubScript,
+            )
+        )
+        self.superscript_action.triggered.connect(
+            lambda: self._toggle_vertical_alignment(
+                self.superscript_action,
+                QtGui.QTextCharFormat.VerticalAlignment.AlignSuperScript,
+            )
+        )
         self.text_color_action.triggered.connect(self._choose_text_color)
         self.highlight_action.triggered.connect(self._choose_highlight_color)
         self.clear_format_action.triggered.connect(self._clear_selection_format)
@@ -1763,6 +1861,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.italic_action.setToolTip(self._tr("tooltip_italic"))
         self.underline_action.setToolTip(self._tr("tooltip_underline"))
         self.strike_action.setToolTip(self._tr("tooltip_strike"))
+        self.subscript_action.setToolTip(self._tr("tooltip_subscript"))
+        self.superscript_action.setToolTip(self._tr("tooltip_superscript"))
         self.undo_action.setToolTip(self._tr("tooltip_undo"))
         self.redo_action.setToolTip(self._tr("tooltip_redo"))
         self.text_color_action.setToolTip(self._tr("tooltip_text_color"))
@@ -1970,6 +2070,24 @@ class MainWindow(QtWidgets.QMainWindow):
             painter.setFont(font)
             painter.drawText(pixmap.rect().adjusted(0, -1, 0, 0), QtCore.Qt.AlignmentFlag.AlignCenter, "S")
             painter.drawLine(6, 12, 18, 12)
+        elif kind == "subscript":
+            font = QtGui.QFont("DejaVu Sans", 12)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(QtCore.QRect(3, 3, 12, 14), QtCore.Qt.AlignmentFlag.AlignCenter, "x")
+            small_font = QtGui.QFont("DejaVu Sans", 8)
+            small_font.setBold(True)
+            painter.setFont(small_font)
+            painter.drawText(QtCore.QRect(14, 12, 8, 8), QtCore.Qt.AlignmentFlag.AlignCenter, "2")
+        elif kind == "superscript":
+            font = QtGui.QFont("DejaVu Sans", 12)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(QtCore.QRect(3, 7, 12, 14), QtCore.Qt.AlignmentFlag.AlignCenter, "x")
+            small_font = QtGui.QFont("DejaVu Sans", 8)
+            small_font.setBold(True)
+            painter.setFont(small_font)
+            painter.drawText(QtCore.QRect(14, 3, 8, 8), QtCore.Qt.AlignmentFlag.AlignCenter, "2")
         elif kind == "bulleted-list":
             painter.setBrush(QtGui.QColor("#172b65"))
             for y in (6, 12, 18):
@@ -2013,13 +2131,17 @@ class MainWindow(QtWidgets.QMainWindow):
             painter.drawLine(8, 9, 4, 12)
             painter.drawLine(8, 15, 4, 12)
         elif kind == "undo":
-            painter.drawLine(8, 7, 4, 11)
-            painter.drawLine(8, 15, 4, 11)
-            painter.drawArc(QtCore.QRectF(5, 7, 14, 10), 25 * 16, -245 * 16)
+            path = QtGui.QPainterPath(QtCore.QPointF(18, 16))
+            path.cubicTo(QtCore.QPointF(15, 9), QtCore.QPointF(8, 8), QtCore.QPointF(5, 12))
+            painter.drawPath(path)
+            painter.drawLine(QtCore.QPointF(5, 12), QtCore.QPointF(9, 8))
+            painter.drawLine(QtCore.QPointF(5, 12), QtCore.QPointF(9, 16))
         elif kind == "redo":
-            painter.drawLine(16, 7, 20, 11)
-            painter.drawLine(16, 15, 20, 11)
-            painter.drawArc(QtCore.QRectF(5, 7, 14, 10), 155 * 16, 245 * 16)
+            path = QtGui.QPainterPath(QtCore.QPointF(6, 16))
+            path.cubicTo(QtCore.QPointF(9, 9), QtCore.QPointF(16, 8), QtCore.QPointF(19, 12))
+            painter.drawPath(path)
+            painter.drawLine(QtCore.QPointF(19, 12), QtCore.QPointF(15, 8))
+            painter.drawLine(QtCore.QPointF(19, 12), QtCore.QPointF(15, 16))
         elif kind == "text-color":
             font = QtGui.QFont("DejaVu Sans", 12)
             font.setBold(True)
@@ -2089,6 +2211,24 @@ class MainWindow(QtWidgets.QMainWindow):
     def _toggle_strike(self) -> None:
         char_format = QtGui.QTextCharFormat()
         char_format.setFontStrikeOut(self.strike_action.isChecked())
+        self._merge_char_format(char_format)
+
+    def _toggle_vertical_alignment(
+        self,
+        action: QtGui.QAction,
+        alignment: QtGui.QTextCharFormat.VerticalAlignment,
+    ) -> None:
+        if action is self.subscript_action and action.isChecked():
+            self.superscript_action.setChecked(False)
+        elif action is self.superscript_action and action.isChecked():
+            self.subscript_action.setChecked(False)
+
+        char_format = QtGui.QTextCharFormat()
+        char_format.setVerticalAlignment(
+            alignment
+            if action.isChecked()
+            else QtGui.QTextCharFormat.VerticalAlignment.AlignNormal
+        )
         self._merge_char_format(char_format)
 
     def _choose_text_color(self) -> None:
@@ -2172,20 +2312,93 @@ class MainWindow(QtWidgets.QMainWindow):
         self._merge_char_format(char_format)
 
     def _adjust_font_size(self, delta: int) -> None:
-        current_format = self.content_input.currentCharFormat()
-        current_size = (
-            current_format.fontPointSize()
+        cursor = self.content_input.textCursor()
+        if cursor.hasSelection():
+            self._adjust_selected_font_sizes(cursor, delta)
+            self._sync_format_controls()
+            return
+
+        current_size = self._format_point_size(self.content_input.currentCharFormat())
+        next_size = self._next_font_size(current_size, delta)
+        char_format = QtGui.QTextCharFormat()
+        char_format.setFontPointSize(next_size)
+        self._merge_char_format(char_format)
+        self._set_list_marker_size_for_cursor(cursor, next_size)
+        self._updating_format_controls = True
+        self.font_size_input.setCurrentText(str(int(next_size)))
+        self._updating_format_controls = False
+
+    def _adjust_selected_font_sizes(self, selection_cursor: QtGui.QTextCursor, delta: int) -> None:
+        document = self.content_input.document()
+        selection_start = selection_cursor.selectionStart()
+        selection_end = selection_cursor.selectionEnd()
+        edit_cursor = QtGui.QTextCursor(document)
+
+        edit_cursor.beginEditBlock()
+        block = document.findBlock(selection_start)
+        while block.isValid() and block.position() < selection_end:
+            list_marker_size: float | None = None
+            iterator = block.begin()
+            while not iterator.atEnd():
+                fragment = iterator.fragment()
+                if not fragment.isValid():
+                    iterator += 1
+                    continue
+
+                fragment_start = fragment.position()
+                fragment_end = fragment_start + fragment.length()
+                overlap_start = max(selection_start, fragment_start)
+                overlap_end = min(selection_end, fragment_end)
+                if overlap_start >= overlap_end:
+                    iterator += 1
+                    continue
+
+                next_size = self._next_font_size(self._format_point_size(fragment.charFormat()), delta)
+                if list_marker_size is None:
+                    list_marker_size = next_size
+                char_format = QtGui.QTextCharFormat()
+                char_format.setFontPointSize(next_size)
+
+                fragment_cursor = QtGui.QTextCursor(document)
+                fragment_cursor.setPosition(overlap_start)
+                fragment_cursor.setPosition(overlap_end, QtGui.QTextCursor.MoveMode.KeepAnchor)
+                fragment_cursor.mergeCharFormat(char_format)
+                iterator += 1
+
+            if block.textList() is not None and list_marker_size is not None:
+                block_cursor = QtGui.QTextCursor(block)
+                block_char_format = QtGui.QTextCharFormat()
+                block_char_format.setFontPointSize(list_marker_size)
+                block_cursor.mergeBlockCharFormat(block_char_format)
+
+            block = block.next()
+        edit_cursor.endEditBlock()
+
+        restored_cursor = QtGui.QTextCursor(document)
+        restored_cursor.setPosition(selection_start)
+        restored_cursor.setPosition(selection_end, QtGui.QTextCursor.MoveMode.KeepAnchor)
+        self.content_input.setTextCursor(restored_cursor)
+
+    @staticmethod
+    def _set_list_marker_size_for_cursor(cursor: QtGui.QTextCursor, size: float) -> None:
+        if cursor.block().textList() is None:
+            return
+        block_cursor = QtGui.QTextCursor(cursor.block())
+        block_char_format = QtGui.QTextCharFormat()
+        block_char_format.setFontPointSize(size)
+        block_cursor.mergeBlockCharFormat(block_char_format)
+
+    def _format_point_size(self, char_format: QtGui.QTextCharFormat) -> float:
+        return (
+            char_format.fontPointSize()
             or self.content_input.fontPointSize()
             or self.content_input.font().pointSizeF()
             or 12
         )
-        next_size = max(1, current_size + delta)
-        char_format = QtGui.QTextCharFormat()
-        char_format.setFontPointSize(next_size)
-        self._merge_char_format(char_format)
-        self._updating_format_controls = True
-        self.font_size_input.setCurrentText(str(int(next_size)))
-        self._updating_format_controls = False
+
+    @staticmethod
+    def _next_font_size(current_size: float, delta: int) -> float:
+        return max(1, current_size + delta)
 
     def _sync_format_controls(self) -> None:
         if not hasattr(self, "content_input"):
@@ -2198,6 +2411,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.italic_action.setChecked(font.italic())
         self.underline_action.setChecked(font.underline())
         self.strike_action.setChecked(font.strikeOut())
+        vertical_alignment = char_format.verticalAlignment()
+        self.subscript_action.setChecked(
+            vertical_alignment == QtGui.QTextCharFormat.VerticalAlignment.AlignSubScript
+        )
+        self.superscript_action.setChecked(
+            vertical_alignment == QtGui.QTextCharFormat.VerticalAlignment.AlignSuperScript
+        )
         alignment = self.content_input.alignment()
         self.align_left_action.setChecked(bool(alignment & QtCore.Qt.AlignmentFlag.AlignLeft))
         self.align_center_action.setChecked(bool(alignment & QtCore.Qt.AlignmentFlag.AlignHCenter))
