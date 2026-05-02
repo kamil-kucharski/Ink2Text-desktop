@@ -22,6 +22,7 @@ from app.services import (
     export_note_to_pdf,
 )
 from app.storage import FileNoteRepository
+from app.resources import asset_path
 from app.ui.image_import import filter_supported_image_paths
 from app.ui.i18n import translate
 from app.ui.menu_select import MenuSelectButton
@@ -1297,7 +1298,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.logo_mark = QtWidgets.QLabel()
         self.logo_mark.setObjectName("LogoMark")
         self.logo_mark.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        logo_path = Path(__file__).resolve().parents[2] / "assets" / "logoink2text.png"
+        logo_path = asset_path("logoink2text.png")
         logo_pixmap = QtGui.QPixmap(str(logo_path))
         if not logo_pixmap.isNull():
             self.logo_mark.setPixmap(
@@ -2500,7 +2501,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._display_note(note)
         self.statusBar().showMessage(self._tr("status_loaded_note", title=note.display_title))
 
-    def _save_current_note(self) -> None:
+    def _save_current_note(self, *, show_status: bool = True) -> None:
         if self.current_note is None:
             self.current_note = Note.create_empty()
             self.current_note.title = self._tr("default_note_title")
@@ -2509,7 +2510,8 @@ class MainWindow(QtWidgets.QMainWindow):
         saved_note = self.repository.save(self.current_note)
         self.current_note = saved_note
         self.refresh_notes(selected_note_id=saved_note.id)
-        self.statusBar().showMessage(self._tr("status_saved_note", title=saved_note.display_title))
+        if show_status:
+            self.statusBar().showMessage(self._tr("status_saved_note", title=saved_note.display_title))
 
     def _delete_current_note(self) -> None:
         if self.current_note is None:
@@ -2786,7 +2788,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.current_note = Note.create_empty()
             self.current_note.title = self._tr("default_note_title")
 
-        self._sync_form_to_current_note()
+        self._save_current_note(show_status=False)
         title = self.current_note.title.strip() or self._tr("default_export_title")
         sanitized_title = (
             "".join(char if char.isalnum() else "_" for char in title).strip("_")

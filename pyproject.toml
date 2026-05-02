@@ -25,6 +25,9 @@ notatki-ai = "app.main:main"
 dev = [
   "pytest>=8.0",
 ]
+build = [
+  "pyinstaller>=6.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

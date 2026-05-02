@@ -18,12 +18,13 @@ def main() -> int:
     _prefer_stable_linux_qt_backend()
 
     try:
-        from PySide6 import QtWidgets
+        from PySide6 import QtGui, QtWidgets
     except ModuleNotFoundError:
         print("Brakuje zależności PySide6. Zainstaluj projekt poleceniem: pip install -e .[dev]")
         return 1
 
     from app.config import load_app_config
+    from app.resources import asset_path
     from app.services import GeminiAIProvider, ImagePreparationService
     from app.storage import FileNoteRepository
     from app.ui import MainWindow
@@ -31,6 +32,9 @@ def main() -> int:
 
     application = QtWidgets.QApplication(sys.argv)
     application.setApplicationName("Ink2Text")
+    icon_path = asset_path("ink2text.ico")
+    if icon_path.exists():
+        application.setWindowIcon(QtGui.QIcon(str(icon_path)))
     apply_theme(application)
 
     repository = FileNoteRepository()
@@ -47,6 +51,8 @@ def main() -> int:
         ai_provider=ai_provider,
         app_config=app_config,
     )
+    if not application.windowIcon().isNull():
+        window.setWindowIcon(application.windowIcon())
     if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
         screen = application.primaryScreen()
         if screen is not None:
