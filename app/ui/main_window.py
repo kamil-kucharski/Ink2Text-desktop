@@ -824,6 +824,105 @@ class LoadingOverlay(QtWidgets.QWidget):
         self.hide()
 
 
+class ResponsiveEditorToolbar(QtWidgets.QFrame):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._items: list[QtWidgets.QWidget] = []
+        self._actions: list[QtGui.QAction] = []
+        self._icon_size = QtCore.QSize(22, 22)
+        self._row_count = 1
+        self._layout = QtWidgets.QGridLayout(self)
+        self._layout.setContentsMargins(10, 8, 10, 8)
+        self._layout.setHorizontalSpacing(6)
+        self._layout.setVerticalSpacing(6)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Maximum)
+
+    def setMovable(self, _is_movable: bool) -> None:
+        return
+
+    def setFloatable(self, _is_floatable: bool) -> None:
+        return
+
+    def setIconSize(self, icon_size: QtCore.QSize) -> None:
+        self._icon_size = icon_size
+        for item in self._items:
+            if isinstance(item, QtWidgets.QToolButton):
+                item.setIconSize(icon_size)
+
+    def addAction(self, icon: QtGui.QIcon, text: str = "") -> QtGui.QAction:  # type: ignore[override]
+        action = QtGui.QAction(icon, text, self)
+        button = QtWidgets.QToolButton(self)
+        button.setDefaultAction(action)
+        button.setAutoRaise(True)
+        button.setIconSize(self._icon_size)
+        button.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self._actions.append(action)
+        QtWidgets.QWidget.addAction(self, action)
+        self._add_item(button)
+        return action
+
+    def addWidget(self, widget: QtWidgets.QWidget) -> QtWidgets.QWidget:  # type: ignore[override]
+        self._add_item(widget)
+        return widget
+
+    def addSeparator(self) -> None:
+        separator = QtWidgets.QFrame(self)
+        separator.setObjectName("ToolbarSeparator")
+        separator.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        separator.setFixedWidth(1)
+        self._add_item(separator)
+
+    def actions(self) -> list[QtGui.QAction]:  # type: ignore[override]
+        return self._actions
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._reflow()
+
+    def _add_item(self, widget: QtWidgets.QWidget) -> None:
+        self._items.append(widget)
+        QtCore.QTimer.singleShot(0, self._reflow)
+
+    def _reflow(self) -> None:
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            if item.widget() is not None:
+                self._layout.removeWidget(item.widget())
+
+        available_width = max(220, self.width() - 20)
+        row = 0
+        column = 0
+        row_width = 0
+        spacing = self._layout.horizontalSpacing()
+
+        for widget in self._items:
+            item_width = self._item_width(widget)
+            next_width = item_width if row_width == 0 else row_width + spacing + item_width
+            if row == 0 and row_width > 0 and next_width > available_width:
+                row = 1
+                column = 0
+                row_width = 0
+
+            self._layout.addWidget(widget, row, column)
+            row_width = item_width if row_width == 0 else row_width + spacing + item_width
+            column += 1
+
+        self._row_count = row + 1
+        margins = self._layout.contentsMargins()
+        row_height = 36
+        height = margins.top() + margins.bottom() + self._row_count * row_height
+        if self._row_count > 1:
+            height += self._layout.verticalSpacing()
+        self.setMinimumHeight(height)
+        self.setMaximumHeight(height)
+        self.updateGeometry()
+
+    def _item_width(self, widget: QtWidgets.QWidget) -> int:
+        if widget.objectName() == "ToolbarSeparator":
+            return 11
+        return max(widget.minimumSizeHint().width(), widget.sizeHint().width(), widget.minimumWidth())
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(
         self,
@@ -1493,7 +1592,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.title_input.selectAll()
 
     def _build_editor_toolbar(self) -> None:
-        toolbar = QtWidgets.QToolBar("Formatowanie")
+        toolbar = ResponsiveEditorToolbar()
         toolbar.setObjectName("EditorToolbar")
         toolbar.setMovable(False)
         toolbar.setFloatable(False)
@@ -1573,6 +1672,8 @@ class MainWindow(QtWidgets.QMainWindow):
             action.setCheckable(True)
             action.setToolTip(tooltip)
             self.align_group.addAction(action)
+
+        toolbar._reflow()
 
         self.undo_action.triggered.connect(lambda: self.content_input.undo())
         self.redo_action.triggered.connect(lambda: self.content_input.redo())
