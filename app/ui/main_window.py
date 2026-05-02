@@ -1530,6 +1530,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self.clear_format_action.setToolTip("Wyczyść formatowanie")
 
         toolbar.addSeparator()
+        self.font_family_input = MenuSelectButton()
+        self.font_family_input.setObjectName("FontFamilyButton")
+        self.font_family_input.setMinimumWidth(220)
+        for family in QtGui.QFontDatabase.families():
+            self.font_family_input.addItem(family, family)
+        toolbar.addWidget(self.font_family_input)
+
+        self.font_size_input = MenuSelectButton()
+        self.font_size_input.setObjectName("FontSizeButton")
+        self.font_size_input.setMinimumWidth(72)
+        for size in ("8", "9", "10", "11", "12", "13", "14", "16", "18", "20", "24", "28", "32", "36", "48"):
+            self.font_size_input.addItem(size)
+        toolbar.addWidget(self.font_size_input)
+        self.decrease_font_size_action = toolbar.addAction(self._build_toolbar_icon("font-smaller"), "")
+        self.decrease_font_size_action.setToolTip("Zmniejsz czcionkę")
+        self.increase_font_size_action = toolbar.addAction(self._build_toolbar_icon("font-larger"), "")
+        self.increase_font_size_action.setToolTip("Zwiększ czcionkę")
+
+        toolbar.addSeparator()
         self.bulleted_list_action = toolbar.addAction(self._build_toolbar_icon("bulleted-list"), "")
         self.bulleted_list_action.setToolTip("Lista punktowana")
         self.numbered_list_action = toolbar.addAction(self._build_toolbar_icon("numbered-list"), "")
@@ -1554,25 +1573,6 @@ class MainWindow(QtWidgets.QMainWindow):
             action.setCheckable(True)
             action.setToolTip(tooltip)
             self.align_group.addAction(action)
-
-        toolbar.addSeparator()
-        self.font_family_input = MenuSelectButton()
-        self.font_family_input.setObjectName("FontFamilyButton")
-        self.font_family_input.setMinimumWidth(220)
-        for family in QtGui.QFontDatabase.families():
-            self.font_family_input.addItem(family, family)
-        toolbar.addWidget(self.font_family_input)
-
-        self.font_size_input = MenuSelectButton()
-        self.font_size_input.setObjectName("FontSizeButton")
-        self.font_size_input.setMinimumWidth(72)
-        for size in ("8", "9", "10", "11", "12", "13", "14", "16", "18", "20", "24", "28", "32", "36", "48"):
-            self.font_size_input.addItem(size)
-        toolbar.addWidget(self.font_size_input)
-        self.decrease_font_size_action = toolbar.addAction(self._build_toolbar_icon("font-smaller"), "")
-        self.decrease_font_size_action.setToolTip("Zmniejsz czcionkę")
-        self.increase_font_size_action = toolbar.addAction(self._build_toolbar_icon("font-larger"), "")
-        self.increase_font_size_action.setToolTip("Zwiększ czcionkę")
 
         self.undo_action.triggered.connect(lambda: self.content_input.undo())
         self.redo_action.triggered.connect(lambda: self.content_input.redo())
@@ -1942,15 +1942,18 @@ class MainWindow(QtWidgets.QMainWindow):
             font = QtGui.QFont("DejaVu Sans", 12)
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(QtCore.QRect(3, 4, 13, 15), QtCore.Qt.AlignmentFlag.AlignCenter, "A")
-            painter.drawLine(17, 8, 17, 16)
-            painter.drawLine(13, 12, 21, 12)
+            painter.drawText(QtCore.QRect(3, 5, 13, 15), QtCore.Qt.AlignmentFlag.AlignCenter, "A")
+            painter.drawLine(18, 17, 18, 7)
+            painter.drawLine(14.5, 10.5, 18, 7)
+            painter.drawLine(21.5, 10.5, 18, 7)
         elif kind == "font-smaller":
             font = QtGui.QFont("DejaVu Sans", 12)
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(QtCore.QRect(3, 4, 13, 15), QtCore.Qt.AlignmentFlag.AlignCenter, "A")
-            painter.drawLine(13, 12, 21, 12)
+            painter.drawText(QtCore.QRect(3, 5, 13, 15), QtCore.Qt.AlignmentFlag.AlignCenter, "A")
+            painter.drawLine(18, 7, 18, 17)
+            painter.drawLine(14.5, 13.5, 18, 17)
+            painter.drawLine(21.5, 13.5, 18, 17)
         else:
             font = QtGui.QFont("DejaVu Sans", 9)
             painter.setFont(font)
