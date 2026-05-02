@@ -20,11 +20,7 @@ QLabel#LogoMark {
     min-height: 38px;
     max-width: 38px;
     max-height: 38px;
-    border-radius: 10px;
-    background: #172b65;
-    color: white;
-    font-size: 20px;
-    font-weight: 700;
+    background: transparent;
 }
 QLabel#LogoLabel {
     color: #101a33;
@@ -70,10 +66,18 @@ QLabel#StatusMeta {
     font-size: 12px;
 }
 QFrame#ContentCard,
+QFrame#PhotosPanel,
+QFrame#EditorPanel,
 QFrame#AssistantPanel {
     background: #ffffff;
     border: 1px solid #e4e9f2;
-    border-radius: 18px;
+    border-radius: 0;
+}
+QFrame#PhotosPanel {
+    border-bottom: none;
+}
+QFrame#AssistantPanel {
+    border-left: none;
 }
 QFrame#TopBar {
     background: transparent;
@@ -112,14 +116,23 @@ QLabel#TipText {
     font-size: 13px;
     line-height: 1.45;
 }
-QLabel#TitleIconTile {
-    min-width: 52px;
-    min-height: 52px;
-    max-width: 52px;
-    max-height: 52px;
-    border-radius: 14px;
+QLabel#TitleIconTile,
+QPushButton#TitleIconButton {
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    border-radius: 12px;
     background: rgba(255, 255, 255, 0.94);
     border: 1px solid #e4e9f2;
+    padding: 0;
+}
+QPushButton#TitleIconButton:hover {
+    background: #ffffff;
+    border-color: #d5deeb;
+}
+QPushButton#TitleIconButton:pressed {
+    background: #f1f5fb;
 }
 QLabel#DialogTitle {
     color: #101a33;
@@ -228,11 +241,11 @@ QPushButton#SidebarLinkButton {
     background: transparent;
     border: 1px solid transparent;
     color: #66728a;
-    padding-left: 2px;
-    padding-right: 4px;
-    min-height: 32px;
-    font-size: 13px;
-    font-weight: 600;
+    padding-left: 4px;
+    padding-right: 6px;
+    min-height: 40px;
+    font-size: 14px;
+    font-weight: 700;
 }
 QPushButton[variant="link"]:hover,
 QPushButton#SidebarLinkButton:hover {
@@ -249,13 +262,16 @@ QPushButton#IconButton {
     color: #66728a;
 }
 QPushButton#TopActionButton {
-    min-height: 58px;
-    padding: 0 24px;
-    border-radius: 16px;
+    min-width: 176px;
+    max-width: 176px;
+    min-height: 32px;
+    max-height: 32px;
+    padding: 0 16px;
+    border-radius: 12px;
     background: rgba(255, 255, 255, 0.95);
     border: 1px solid #e4e9f2;
     color: #172b65;
-    font-size: 16px;
+    font-size: 12px;
     font-weight: 800;
 }
 QPushButton#TopActionButton:hover {
@@ -353,22 +369,43 @@ QPushButton#FontFamilyButton,
 QPushButton#FontSizeButton,
 QPushButton#SettingsModelButton {
     text-align: left;
-    padding-left: 12px;
-    padding-right: 12px;
+    min-height: 38px;
+    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid #dfe5ef;
+    color: #2b354a;
+    font-size: 13px;
+    font-weight: 700;
+    padding-left: 18px;
+    padding-right: 34px;
+}
+QPushButton[selectMenu="true"]::menu-indicator {
+    image: none;
+    width: 0;
+}
+QPushButton#LanguageButton:hover,
+QPushButton#ModeButton:hover,
+QPushButton#AssistantModeButton:hover,
+QPushButton#FontFamilyButton:hover,
+QPushButton#FontSizeButton:hover,
+QPushButton#SettingsModelButton:hover {
+    background: #fbfcff;
+    border-color: #cfd8e8;
+}
+QPushButton#LanguageButton:pressed,
+QPushButton#ModeButton:pressed,
+QPushButton#AssistantModeButton:pressed,
+QPushButton#FontFamilyButton:pressed,
+QPushButton#FontSizeButton:pressed,
+QPushButton#SettingsModelButton:pressed {
+    background: #f1f5fb;
 }
 QPushButton#AssistantModeButton {
     min-height: 52px;
     border-radius: 12px;
-    background: #ffffff;
-    border: 1px solid #dfe5ef;
-    color: #2b354a;
     font-size: 14px;
-    font-weight: 700;
-    padding-left: 16px;
-}
-QPushButton#AssistantModeButton:hover {
-    background: #fbfcff;
-    border-color: #cfd8e8;
+    padding-left: 20px;
+    padding-right: 38px;
 }
 QLineEdit,
 QTextEdit {
@@ -438,8 +475,7 @@ QLabel#PreviewImage {
 }
 QTextEdit#ContentEditor {
     min-height: 260px;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
+    border-radius: 0;
     border-top: none;
     color: #172033;
     font-size: 14px;
@@ -447,10 +483,7 @@ QTextEdit#ContentEditor {
 QToolBar#EditorToolbar {
     background: #fbfcff;
     border: 1px solid #dfe5ef;
-    border-top-left-radius: 12px;
-    border-top-right-radius: 12px;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
+    border-radius: 0;
     spacing: 8px;
     padding: 7px;
 }
@@ -522,19 +555,31 @@ QStatusBar {
     color: #7b879d;
     min-height: 26px;
 }
-QMenu {
+QMenu,
+QMenu#SelectMenu {
     background: #ffffff;
-    border: 1px solid #dfe5ef;
-    border-radius: 12px;
-    padding: 8px;
+    border: 1px solid #d8e0ed;
+    border-radius: 14px;
+    padding: 7px;
+    color: #263148;
 }
-QMenu::item {
-    padding: 8px 12px;
-    border-radius: 8px;
+QMenu::item,
+QMenu#SelectMenu::item {
+    min-height: 28px;
+    padding: 8px 32px 8px 18px;
+    border-radius: 9px;
+    background: transparent;
 }
-QMenu::item:selected {
+QMenu::item:selected,
+QMenu#SelectMenu::item:selected {
     background: #eef3ff;
     color: #172b65;
+}
+QMenu::separator,
+QMenu#SelectMenu::separator {
+    height: 1px;
+    background: #edf1f7;
+    margin: 6px 8px;
 }
 QScrollBar:vertical,
 QScrollBar:horizontal {

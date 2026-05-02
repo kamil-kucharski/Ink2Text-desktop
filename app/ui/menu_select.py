@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 
 class MenuSelectButton(QtWidgets.QPushButton):
@@ -14,8 +14,10 @@ class MenuSelectButton(QtWidgets.QPushButton):
         self._actions: list[QtWidgets.QAction] = []
         self._current_index = -1
         self._menu = QtWidgets.QMenu(self)
+        self._menu.setObjectName("SelectMenu")
+        self.setProperty("selectMenu", True)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.setMenu(self._menu)
-        self.setStyleSheet("text-align: left; padding-right: 18px;")
         self._update_button_label()
 
     def addItem(self, text: str, data: object | None = None) -> None:
@@ -23,7 +25,6 @@ class MenuSelectButton(QtWidgets.QPushButton):
         item_data = text if data is None else data
         self._items.append((text, item_data))
         action = self._menu.addAction(text)
-        action.setCheckable(True)
         action.triggered.connect(lambda _checked=False, index=item_index: self.setCurrentIndex(index))
         self._actions.append(action)
         if self._current_index < 0:
@@ -94,8 +95,24 @@ class MenuSelectButton(QtWidgets.QPushButton):
 
     def _sync_checked_action(self) -> None:
         for index, action in enumerate(self._actions):
-            action.setChecked(index == self._current_index)
+            font = action.font()
+            font.setWeight(QtGui.QFont.Weight.DemiBold if index == self._current_index else QtGui.QFont.Weight.Normal)
+            action.setFont(font)
 
     def _update_button_label(self) -> None:
         text = self.currentText() or "Wybierz"
-        self.setText(f"{text}  v")
+        self.setText(f"   {text}")
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        super().paintEvent(event)
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        pen = QtGui.QPen(QtGui.QColor("#66728a"), 1.8)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+
+        center_y = self.height() / 2 + 1
+        right = self.width() - 18
+        painter.drawLine(QtCore.QPointF(right - 5, center_y - 2), QtCore.QPointF(right, center_y + 3))
+        painter.drawLine(QtCore.QPointF(right, center_y + 3), QtCore.QPointF(right + 5, center_y - 2))

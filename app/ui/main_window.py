@@ -146,6 +146,12 @@ def build_simple_icon(kind: str, color: str = "#1f2937", size: int = 24) -> QtGu
         painter.drawLine(13, 8, 17, 8)
         painter.drawLine(9, 14, 15, 14)
         painter.drawLine(9, 17, 14, 17)
+    elif kind == "export":
+        painter.drawRoundedRect(QtCore.QRectF(6, 8, 12, 11), 1.5, 1.5)
+        painter.drawLine(12, 15, 12, 4)
+        painter.drawLine(8.5, 7.5, 12, 4)
+        painter.drawLine(15.5, 7.5, 12, 4)
+        painter.drawLine(9, 15.5, 15, 15.5)
     elif kind == "edit":
         painter.save()
         painter.translate(12, 12)
@@ -1111,9 +1117,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         logo_row = QtWidgets.QHBoxLayout()
         logo_row.setSpacing(12)
-        self.logo_mark = QtWidgets.QLabel("✦")
+        self.logo_mark = QtWidgets.QLabel()
         self.logo_mark.setObjectName("LogoMark")
         self.logo_mark.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        logo_path = Path(__file__).resolve().parents[2] / "assets" / "logoink2text.png"
+        logo_pixmap = QtGui.QPixmap(str(logo_path))
+        if not logo_pixmap.isNull():
+            self.logo_mark.setPixmap(
+                logo_pixmap.scaled(
+                    38,
+                    38,
+                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                    QtCore.Qt.TransformationMode.SmoothTransformation,
+                )
+            )
         self.logo_label = QtWidgets.QLabel("Ink2Text")
         self.logo_label.setObjectName("LogoLabel")
         logo_row.addWidget(self.logo_mark)
@@ -1148,39 +1165,40 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.trash_button = QtWidgets.QPushButton("Kosz")
         self.trash_button.setObjectName("SidebarLinkButton")
-        self.trash_button.setIcon(build_simple_icon("trash", "#7b879d", 32))
-        self.trash_button.setIconSize(QtCore.QSize(18, 18))
-        self.sidebar_settings_button = QtWidgets.QPushButton("Ustawienia")
-        self.sidebar_settings_button.setObjectName("SidebarLinkButton")
-        self.sidebar_settings_button.setIcon(build_simple_icon("settings", "#7b879d", 32))
-        self.sidebar_settings_button.setIconSize(QtCore.QSize(18, 18))
+        self.trash_button.setIcon(build_simple_icon("trash", "#7b879d", 36))
+        self.trash_button.setIconSize(QtCore.QSize(22, 22))
         sidebar_layout.addWidget(self.trash_button)
-        sidebar_layout.addWidget(self.sidebar_settings_button)
 
         main_area = QtWidgets.QWidget()
         main_area.setObjectName("MainArea")
         main_layout = QtWidgets.QVBoxLayout(main_area)
         main_layout.setContentsMargins(18, 18, 18, 14)
-        main_layout.setSpacing(14)
+        main_layout.setSpacing(4)
 
         self.top_bar = QtWidgets.QFrame()
         self.top_bar.setObjectName("TopBar")
         top_layout = QtWidgets.QHBoxLayout(self.top_bar)
-        top_layout.setContentsMargins(18, 10, 18, 10)
+        top_layout.setContentsMargins(0, 4, 0, 4)
         top_layout.setSpacing(14)
 
         title_shell = QtWidgets.QHBoxLayout()
         title_shell.setSpacing(14)
+        self.save_button = QtWidgets.QPushButton()
+        self.save_button.setObjectName("TitleIconButton")
+        self.save_button.setIcon(build_simple_icon("save", "#172b65", 32))
+        self.save_button.setIconSize(QtCore.QSize(21, 21))
         self.title_icon_tile = QtWidgets.QLabel()
         self.title_icon_tile.setObjectName("TitleIconTile")
         self.title_icon_tile.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.title_icon_tile.setPixmap(build_simple_icon("edit", "#172b65", 32).pixmap(24, 24))
+        self.title_icon_tile.setPixmap(build_simple_icon("edit", "#172b65", 32).pixmap(21, 21))
         self.title_icon_tile.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.title_icon_tile.installEventFilter(self)
+        title_shell.addWidget(self.save_button, alignment=QtCore.Qt.AlignmentFlag.AlignTop)
         title_shell.addWidget(self.title_icon_tile, alignment=QtCore.Qt.AlignmentFlag.AlignTop)
+        title_shell.addSpacing(8)
 
         title_area = QtWidgets.QVBoxLayout()
-        title_area.setSpacing(2)
+        title_area.setSpacing(0)
         title_row = QtWidgets.QHBoxLayout()
         title_row.setSpacing(8)
         self.title_input = QtWidgets.QLineEdit()
@@ -1189,35 +1207,31 @@ class MainWindow(QtWidgets.QMainWindow):
         self.note_meta_label = QtWidgets.QLabel()
         self.note_meta_label.setObjectName("MetaText")
         self.note_meta_label.setTextFormat(QtCore.Qt.TextFormat.RichText)
+        self.note_meta_label.setContentsMargins(2, -2, 0, 0)
         title_row.addWidget(self.title_input)
         title_row.addStretch()
         title_area.addLayout(title_row)
         title_area.addWidget(self.note_meta_label)
         title_shell.addLayout(title_area, stretch=1)
         top_layout.addLayout(title_shell, stretch=1)
+        self.settings_button = QtWidgets.QPushButton()
+        self.settings_button.setObjectName("TitleIconButton")
+        self.settings_button.setIcon(build_simple_icon("settings", "#172b65", 32))
+        self.settings_button.setIconSize(QtCore.QSize(21, 21))
+        top_layout.addWidget(self.settings_button, alignment=QtCore.Qt.AlignmentFlag.AlignTop)
 
-        self.save_button = QtWidgets.QPushButton("Zapisz")
-        self.save_button.setObjectName("TopActionButton")
-        self.save_button.setIcon(build_simple_icon("save", "#172b65", 32))
-        self.save_button.setIconSize(QtCore.QSize(24, 24))
-        self.export_pdf_button = QtWidgets.QPushButton("Eksportuj PDF")
-        self.export_pdf_button.setObjectName("TopActionButton")
-        self.export_pdf_button.setIcon(build_simple_icon("pdf", "#172b65", 32))
-        self.export_pdf_button.setIconSize(QtCore.QSize(24, 24))
         self.refresh_button = QtWidgets.QPushButton("Odśwież")
-        top_layout.addWidget(self.save_button)
-        top_layout.addWidget(self.export_pdf_button)
 
         content_row = QtWidgets.QHBoxLayout()
         content_row.setContentsMargins(0, 0, 0, 0)
-        content_row.setSpacing(14)
+        content_row.setSpacing(0)
 
         center_column = QtWidgets.QVBoxLayout()
         center_column.setContentsMargins(0, 0, 0, 0)
-        center_column.setSpacing(14)
+        center_column.setSpacing(0)
 
         self.photos_card = QtWidgets.QFrame()
-        self.photos_card.setObjectName("ContentCard")
+        self.photos_card.setObjectName("PhotosPanel")
         photos_layout = QtWidgets.QVBoxLayout(self.photos_card)
         photos_layout.setContentsMargins(18, 16, 18, 16)
         photos_layout.setSpacing(6)
@@ -1268,7 +1282,7 @@ class MainWindow(QtWidgets.QMainWindow):
         photos_layout.addLayout(photos_hint_row)
 
         self.editor_section = QtWidgets.QFrame()
-        self.editor_section.setObjectName("ContentCard")
+        self.editor_section.setObjectName("EditorPanel")
         editor_layout = QtWidgets.QVBoxLayout(self.editor_section)
         editor_layout.setContentsMargins(18, 16, 18, 16)
         editor_layout.setSpacing(10)
@@ -1277,12 +1291,17 @@ class MainWindow(QtWidgets.QMainWindow):
         editor_header.setSpacing(12)
         self.editor_title_label = QtWidgets.QLabel()
         self.editor_title_label.setObjectName("CardTitle")
+        self.export_pdf_button = QtWidgets.QPushButton()
+        self.export_pdf_button.setObjectName("IconButton")
+        self.export_pdf_button.setIcon(build_simple_icon("export", "#66728a", 32))
+        self.export_pdf_button.setIconSize(QtCore.QSize(18, 18))
         self.pdf_preview_button = QtWidgets.QPushButton()
         self.pdf_preview_button.setObjectName("IconButton")
         self.pdf_preview_button.setIcon(build_simple_icon("expand", "#66728a", 32))
         self.pdf_preview_button.setIconSize(QtCore.QSize(18, 18))
         editor_header.addWidget(self.editor_title_label)
         editor_header.addStretch()
+        editor_header.addWidget(self.export_pdf_button)
         editor_header.addWidget(self.pdf_preview_button)
         editor_layout.addLayout(editor_header)
 
@@ -1448,7 +1467,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.import_images_button.clicked.connect(self._import_images)
         self.transcribe_ai_button.clicked.connect(self._transcribe_current_note_with_ai)
         self.pdf_preview_button.clicked.connect(self._open_current_note_pdf_preview)
-        self.sidebar_settings_button.clicked.connect(self._open_ai_settings)
+        self.settings_button.clicked.connect(self._open_ai_settings)
         self.trash_button.clicked.connect(self._open_trash_dialog)
         self.note_list.itemSelectionChanged.connect(self._load_selected_note)
         self.image_list.itemSelectionChanged.connect(self._update_image_counter)
@@ -1531,9 +1550,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.new_button: "primary",
             self.refresh_button: "subtle",
             self.import_images_button: "subtle",
+            self.export_pdf_button: "subtle",
             self.pdf_preview_button: "subtle",
             self.transcribe_ai_button: "primary",
-            self.sidebar_settings_button: "link",
             self.trash_button: "link",
         }
         for button, variant in button_variants.items():
@@ -1541,19 +1560,16 @@ class MainWindow(QtWidgets.QMainWindow):
             button.style().unpolish(button)
             button.style().polish(button)
 
-        for button in (self.save_button, self.export_pdf_button):
-            apply_card_shadow(button, blur_radius=16.0)
+        apply_card_shadow(self.save_button, blur_radius=14.0)
 
         apply_card_shadow(self.title_icon_tile, blur_radius=14.0)
-
-        for widget in (self.photos_card, self.editor_section, self.assistant_panel):
-            apply_card_shadow(widget, blur_radius=18.0)
 
     def _apply_translations(self) -> None:
         self.setWindowTitle(self._tr("app_title"))
         self.new_button.setText(self._tr("button_new_note"))
-        self.export_pdf_button.setText(self._tr("button_export_pdf"))
-        self.save_button.setText(self._tr("button_save"))
+        self.export_pdf_button.setToolTip(self._tr("button_export_pdf"))
+        self.save_button.setToolTip(self._tr("button_save"))
+        self.settings_button.setToolTip(self._tr("sidebar_settings"))
         self.refresh_button.setText(self._tr("button_refresh"))
         self.import_images_button.setText("+")
         self.import_images_button.setToolTip(self._tr("button_import_images"))
@@ -1561,7 +1577,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.saved_notes_label.setText(self._tr("label_saved_notes"))
         self.search_input.setPlaceholderText(self._tr("placeholder_search_notes"))
         self.trash_button.setText(self._tr("sidebar_trash"))
-        self.sidebar_settings_button.setText(self._tr("sidebar_settings"))
         self.attachments_header.setText(self._tr("label_images"))
         self.image_empty_label.setText(self._tr("label_no_images_added"))
         self.drag_hint.setText(self._tr("label_drag_hint"))
