@@ -7,12 +7,13 @@ def test_repository_scaffold_exists() -> None:
     expected_paths = [
         root / "README.md",
         root / "pyproject.toml",
-        root / "docs" / "architecture.md",
         root / "tests" / "integration",
         root / "app" / "ui",
-        root / ".github" / "workflows" / "ci.yml",
+        root / "app" / "ui" / "editor_toolbar.py",
+        root / "app" / "ui" / "help_dialog.py",
+        root / "app" / "ui" / "onboarding_dialog.py",
+        root / "assets" / "ink2text.ico",
     ]
 
     for path in expected_paths:
         assert path.exists()
-

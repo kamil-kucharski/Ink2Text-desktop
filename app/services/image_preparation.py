@@ -16,6 +16,12 @@ class PreparedImage:
     height: int
 
 
+@dataclass(slots=True)
+class ImageQualityIssue:
+    source_path: Path
+    issue_code: str
+
+
 class ImagePreparationService:
     def __init__(
         self,
@@ -39,6 +45,50 @@ class ImagePreparationService:
             for relative_path in note.image_paths
         ]
         return self.prepare_images(note.id, source_paths)
+
+    def analyze_note_image_quality(
+        self,
+        note: Note,
+        repository: FileNoteRepository,
+    ) -> list[ImageQualityIssue]:
+        source_paths = [
+            repository.resolve_image_path(relative_path)
+            for relative_path in note.image_paths
+        ]
+        return self.analyze_image_quality(source_paths)
+
+    def analyze_image_quality(self, source_paths: list[Path]) -> list[ImageQualityIssue]:
+        image_module, _, image_ops_module = self._load_pillow_modules()
+        try:
+            from PIL import ImageStat
+        except ModuleNotFoundError as exc:
+            raise RuntimeError(
+                "Brakuje biblioteki Pillow. Zainstaluj zależności poleceniem: pip install -e .[dev]"
+            ) from exc
+
+        issues: list[ImageQualityIssue] = []
+        for source_path in source_paths:
+            if not source_path.is_file():
+                continue
+
+            with image_module.open(source_path) as image:
+                image = image_ops_module.exif_transpose(image)
+                width, height = image.size
+                grayscale = image.convert("L")
+                stat = ImageStat.Stat(grayscale)
+                brightness = stat.mean[0]
+                contrast = stat.stddev[0]
+
+            if min(width, height) < 850:
+                issues.append(ImageQualityIssue(source_path, "low_resolution"))
+            if brightness < 55:
+                issues.append(ImageQualityIssue(source_path, "too_dark"))
+            elif brightness > 238:
+                issues.append(ImageQualityIssue(source_path, "too_bright"))
+            if contrast < 24:
+                issues.append(ImageQualityIssue(source_path, "low_contrast"))
+
+        return issues
 
     def prepare_images(self, note_id: str, source_paths: list[Path]) -> list[PreparedImage]:
         image_module, image_filter_module, image_ops_module = self._load_pillow_modules()

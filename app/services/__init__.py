@@ -13,7 +13,7 @@ from app.services.ai_provider import (
     TranscriptionResult,
     build_transcription_prompt,
 )
-from app.services.image_preparation import ImagePreparationService, PreparedImage
+from app.services.image_preparation import ImagePreparationService, ImageQualityIssue, PreparedImage
 from app.services.pdf_export import (
     PDFExportPayload,
     build_note_html,
@@ -28,6 +28,7 @@ __all__ = [
     "DEFAULT_FALLBACK_MODELS",
     "GeminiAIProvider",
     "ImagePreparationService",
+    "ImageQualityIssue",
     "InvalidProviderResponseError",
     "MissingAPIKeyError",
     "PreparedImage",

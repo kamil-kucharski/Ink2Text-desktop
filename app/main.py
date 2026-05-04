@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import os
+from pathlib import Path
 
 
 def _prefer_stable_linux_qt_backend() -> None:
@@ -28,6 +29,7 @@ def main() -> int:
     from app.services import GeminiAIProvider, ImagePreparationService
     from app.storage import FileNoteRepository
     from app.ui import MainWindow
+    from app.ui.onboarding_dialog import OnboardingDialog
     from app.ui.theme import apply_theme
 
     application = QtWidgets.QApplication(sys.argv)
@@ -38,7 +40,24 @@ def main() -> int:
     apply_theme(application)
 
     repository = FileNoteRepository()
-    app_config = load_app_config(base_dir=repository.base_dir)
+    app_config = load_app_config(base_dir=repository.base_dir, env_path=Path.cwd() / ".env")
+    if not app_config.onboarding_completed:
+        onboarding_dialog = OnboardingDialog(app_config, app_config.app_language)
+        if not application.windowIcon().isNull():
+            onboarding_dialog.setWindowIcon(application.windowIcon())
+        if onboarding_dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            from app.config import save_app_config
+
+            save_app_config(
+                app_config.config_path,
+                gemini_api_key=onboarding_dialog.api_key,
+                gemini_model=onboarding_dialog.model_name,
+                app_language=onboarding_dialog.app_language,
+                onboarding_completed=True,
+                store_api_key_securely=True,
+            )
+            app_config = load_app_config(base_dir=repository.base_dir, env_path=Path.cwd() / ".env")
+
     image_preparation_service = ImagePreparationService(base_dir=repository.base_dir)
     ai_provider = GeminiAIProvider(
         api_key=app_config.gemini_api_key,

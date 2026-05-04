@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from html import escape
-import math
 from pathlib import Path
 import tempfile
 from typing import Iterable
@@ -23,14 +22,18 @@ from app.services import (
 )
 from app.storage import FileNoteRepository
 from app.resources import asset_path
+from app.ui.editor_toolbar import ResponsiveEditorToolbar
+from app.ui.help_dialog import HelpDialog, HelpTipsButton
+from app.ui.icons import build_simple_icon
+from app.ui.image_section import ImageListWidget, ImagePreviewDialog, ImageThumbnailWidget
 from app.ui.image_import import filter_supported_image_paths
 from app.ui.i18n import translate
+from app.ui.loading_overlay import LoadingOverlay
 from app.ui.menu_select import MenuSelectButton
+from app.ui.note_list import NoteListItemWidget, TrashDialog
+from app.ui.pdf_preview import PDFPreviewDialog
 from app.ui.settings_dialog import AISettingsDialog
 from app.ui.theme import apply_card_shadow
-
-
-IMAGE_REORDER_MIME = "application/x-ink2text-image-path"
 
 
 class AITranscriptionWorker(QtCore.QObject):
@@ -65,1068 +68,6 @@ class AITranscriptionWorker(QtCore.QObject):
             self.finished.emit()
 
 
-def build_simple_icon(kind: str, color: str = "#1f2937", size: int = 24) -> QtGui.QIcon:
-    pixmap = QtGui.QPixmap(size, size)
-    pixmap.fill(QtCore.Qt.GlobalColor.transparent)
-
-    painter = QtGui.QPainter(pixmap)
-    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-    painter.scale(size / 24, size / 24)
-    pen = QtGui.QPen(QtGui.QColor(color))
-    pen.setWidthF(2.0)
-    pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-    pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
-    painter.setPen(pen)
-    painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-
-    if kind == "trash":
-        painter.drawLine(7, 8, 17, 8)
-        painter.drawLine(10, 6, 14, 6)
-        painter.drawRoundedRect(QtCore.QRectF(8.5, 9.5, 7, 8.5), 1.5, 1.5)
-        painter.drawLine(11, 11.5, 11, 16)
-        painter.drawLine(13, 11.5, 13, 16)
-    elif kind == "sparkle":
-        painter.drawLine(12, 4, 12, 10)
-        painter.drawLine(12, 14, 12, 20)
-        painter.drawLine(4, 12, 10, 12)
-        painter.drawLine(14, 12, 20, 12)
-        painter.drawLine(7, 7, 9, 9)
-        painter.drawLine(15, 15, 17, 17)
-        painter.drawLine(17, 7, 15, 9)
-        painter.drawLine(9, 15, 7, 17)
-    elif kind == "clock":
-        painter.drawEllipse(QtCore.QPointF(12, 12), 6, 6)
-        painter.drawLine(12, 8.5, 12, 12)
-        painter.drawLine(12, 12, 15, 13.5)
-    elif kind == "calendar":
-        painter.drawRoundedRect(QtCore.QRectF(6, 7, 12, 11), 1.5, 1.5)
-        painter.drawLine(6, 10, 18, 10)
-        painter.drawLine(9, 5, 9, 8)
-        painter.drawLine(15, 5, 15, 8)
-    elif kind == "image":
-        painter.drawRoundedRect(QtCore.QRectF(6, 7, 12, 10), 1.5, 1.5)
-        painter.drawEllipse(QtCore.QPointF(10, 10), 1.1, 1.1)
-        painter.drawLine(8, 15, 11, 12)
-        painter.drawLine(11, 12, 14, 15)
-        painter.drawLine(14, 15, 16, 13)
-    elif kind == "text":
-        painter.drawLine(7, 7, 17, 7)
-        painter.drawLine(7, 11, 17, 11)
-        painter.drawLine(7, 15, 13, 15)
-    elif kind == "globe":
-        painter.drawEllipse(QtCore.QPointF(12, 12), 6, 6)
-        painter.drawLine(6, 12, 18, 12)
-        painter.drawArc(QtCore.QRectF(8, 6, 8, 12), 90 * 16, 180 * 16)
-        painter.drawArc(QtCore.QRectF(8, 6, 8, 12), -90 * 16, 180 * 16)
-    elif kind == "bulb":
-        painter.drawEllipse(QtCore.QPointF(12, 10), 4, 4)
-        painter.drawLine(10, 14, 14, 14)
-        painter.drawLine(10.5, 16, 13.5, 16)
-        painter.drawLine(12, 3.5, 12, 5)
-        painter.drawLine(6.8, 5.2, 7.8, 6.2)
-        painter.drawLine(17.2, 5.2, 16.2, 6.2)
-        painter.drawLine(5, 10, 6.5, 10)
-        painter.drawLine(17.5, 10, 19, 10)
-    elif kind == "settings":
-        painter.drawEllipse(QtCore.QPointF(12, 12), 3.2, 3.2)
-        for angle in range(0, 360, 45):
-            transform = QtGui.QTransform()
-            transform.translate(12, 12)
-            transform.rotate(angle)
-            line = transform.map(QtCore.QLineF(0, -7, 0, -5.2))
-            painter.drawLine(line)
-    elif kind == "save":
-        painter.drawRoundedRect(QtCore.QRectF(6, 5, 12, 14), 1.5, 1.5)
-        painter.drawRoundedRect(QtCore.QRectF(9, 6, 6, 4), 0.8, 0.8)
-        painter.drawRoundedRect(QtCore.QRectF(9, 14, 6, 5), 0.8, 0.8)
-        painter.drawLine(15, 5, 18, 8)
-    elif kind == "pdf":
-        painter.drawRoundedRect(QtCore.QRectF(7, 4, 10, 16), 1.5, 1.5)
-        painter.drawLine(13, 4, 17, 8)
-        painter.drawLine(13, 4, 13, 8)
-        painter.drawLine(13, 8, 17, 8)
-        painter.drawLine(9, 14, 15, 14)
-        painter.drawLine(9, 17, 14, 17)
-    elif kind == "export":
-        painter.drawRoundedRect(QtCore.QRectF(6, 8, 12, 11), 1.5, 1.5)
-        painter.drawLine(12, 15, 12, 4)
-        painter.drawLine(8.5, 7.5, 12, 4)
-        painter.drawLine(15.5, 7.5, 12, 4)
-        painter.drawLine(9, 15.5, 15, 15.5)
-    elif kind == "edit":
-        painter.save()
-        painter.translate(12, 12)
-        painter.rotate(45)
-        painter.drawRoundedRect(QtCore.QRectF(-2.2, -8.0, 4.4, 12.0), 1.2, 1.2)
-        painter.drawLine(-2.2, -4.8, 2.2, -4.8)
-        pencil_tip = QtGui.QPolygonF(
-            [
-                QtCore.QPointF(-2.2, 4.0),
-                QtCore.QPointF(2.2, 4.0),
-                QtCore.QPointF(0.0, 7.6),
-            ]
-        )
-        painter.drawPolygon(pencil_tip)
-        painter.drawLine(-0.7, 6.2, 0.7, 6.2)
-        painter.restore()
-    elif kind == "expand":
-        painter.drawLine(5, 9, 5, 5)
-        painter.drawLine(5, 5, 9, 5)
-        painter.drawLine(15, 5, 19, 5)
-        painter.drawLine(19, 5, 19, 9)
-        painter.drawLine(19, 15, 19, 19)
-        painter.drawLine(19, 19, 15, 19)
-        painter.drawLine(9, 19, 5, 19)
-        painter.drawLine(5, 19, 5, 15)
-    elif kind == "question":
-        painter.drawEllipse(QtCore.QPointF(12, 12), 7, 7)
-        font = QtGui.QFont("DejaVu Sans", 9)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(QtCore.QRect(8, 5, 8, 11), QtCore.Qt.AlignmentFlag.AlignCenter, "?")
-        painter.setBrush(QtGui.QColor(color))
-        painter.drawEllipse(QtCore.QPointF(12, 18), 0.8, 0.8)
-        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-    elif kind == "arrow-right":
-        painter.drawLine(5, 12, 18, 12)
-        painter.drawLine(14, 8, 18, 12)
-        painter.drawLine(14, 16, 18, 12)
-
-    painter.end()
-    return QtGui.QIcon(pixmap)
-
-
-class HelpTipsButton(QtWidgets.QFrame):
-    clicked = QtCore.Signal()
-
-    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setObjectName("HelpTipsButton")
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_Hover, True)
-        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-
-        layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(14, 0, 14, 0)
-        layout.setSpacing(10)
-
-        self.icon_label = QtWidgets.QLabel()
-        self.icon_label.setObjectName("HelpTipsIcon")
-        self.icon_label.setPixmap(build_simple_icon("question", "#7b879d", 28).pixmap(20, 20))
-        self.text_label = QtWidgets.QLabel()
-        self.text_label.setObjectName("HelpTipsText")
-        self.arrow_label = QtWidgets.QLabel()
-        self.arrow_label.setObjectName("HelpTipsArrow")
-        self.arrow_label.setPixmap(build_simple_icon("arrow-right", "#7b879d", 28).pixmap(20, 20))
-
-        layout.addWidget(self.icon_label)
-        layout.addWidget(self.text_label, stretch=1)
-        layout.addWidget(self.arrow_label)
-
-    def setText(self, text: str) -> None:  # noqa: N802 - Qt-style API for consistency
-        self.text_label.setText(text)
-
-    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
-        if event.button() == QtCore.Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
-            self.clicked.emit()
-        super().mouseReleaseEvent(event)
-
-
-class NoteListItemWidget(QtWidgets.QFrame):
-    selectedRequested = QtCore.Signal(str)
-    trashRequested = QtCore.Signal(str)
-
-    def __init__(self, note: Note, updated_label: str, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.note_id = note.id
-        self.setObjectName("NoteItemWidget")
-        self.setMouseTracking(True)
-
-        layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(12, 8, 8, 8)
-        layout.setSpacing(8)
-
-        text_layout = QtWidgets.QVBoxLayout()
-        text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(2)
-        self.title_label = QtWidgets.QLabel(note.display_title)
-        self.title_label.setObjectName("NoteItemTitle")
-        self.date_label = QtWidgets.QLabel(updated_label)
-        self.date_label.setObjectName("NoteItemMeta")
-        text_layout.addWidget(self.title_label)
-        text_layout.addWidget(self.date_label)
-
-        self.trash_button = QtWidgets.QPushButton()
-        self.trash_button.setIcon(build_simple_icon("trash", "#c4322b", 36))
-        self.trash_button.setIconSize(QtCore.QSize(23, 23))
-        self.trash_button.setObjectName("InlineTrashButton")
-        self.trash_button.setToolTip("Przenieś do kosza")
-        self.trash_button.setFixedSize(30, 30)
-        self.trash_button.hide()
-
-        layout.addLayout(text_layout, stretch=1)
-        layout.addWidget(self.trash_button)
-
-        self.trash_button.clicked.connect(lambda: self.trashRequested.emit(self.note_id))
-
-    def set_selected(self, is_selected: bool) -> None:
-        self.setProperty("active", is_selected)
-        self.style().unpolish(self)
-        self.style().polish(self)
-
-    def enterEvent(self, event: QtCore.QEvent) -> None:
-        self.trash_button.show()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event: QtCore.QEvent) -> None:
-        self.trash_button.hide()
-        super().leaveEvent(event)
-
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        self.selectedRequested.emit(self.note_id)
-        super().mousePressEvent(event)
-
-
-class TrashNoteWidget(QtWidgets.QFrame):
-    restoreRequested = QtCore.Signal(str)
-    deleteRequested = QtCore.Signal(str)
-
-    def __init__(self, note: Note, updated_label: str, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.note_id = note.id
-        self.setObjectName("TrashNoteWidget")
-        self.setMouseTracking(True)
-
-        layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(14, 10, 10, 10)
-        layout.setSpacing(10)
-
-        text_layout = QtWidgets.QVBoxLayout()
-        text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(3)
-        self.title_label = QtWidgets.QLabel(note.display_title)
-        self.title_label.setObjectName("TrashNoteTitle")
-        self.date_label = QtWidgets.QLabel(updated_label)
-        self.date_label.setObjectName("TrashNoteMeta")
-        text_layout.addWidget(self.title_label)
-        text_layout.addWidget(self.date_label)
-
-        self.restore_button = QtWidgets.QPushButton("Przywróć")
-        self.restore_button.setObjectName("TrashRestoreButton")
-        self.delete_button = QtWidgets.QPushButton("Usuń")
-        self.delete_button.setObjectName("TrashDeleteButton")
-        self.restore_button.hide()
-        self.delete_button.hide()
-
-        layout.addLayout(text_layout, stretch=1)
-        layout.addWidget(self.restore_button)
-        layout.addWidget(self.delete_button)
-
-        self.restore_button.clicked.connect(lambda: self.restoreRequested.emit(self.note_id))
-        self.delete_button.clicked.connect(lambda: self.deleteRequested.emit(self.note_id))
-
-    def enterEvent(self, event: QtCore.QEvent) -> None:
-        self.restore_button.show()
-        self.delete_button.show()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event: QtCore.QEvent) -> None:
-        self.restore_button.hide()
-        self.delete_button.hide()
-        super().leaveEvent(event)
-
-
-class TrashDialog(QtWidgets.QDialog):
-    def __init__(self, repository: FileNoteRepository, translator, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.repository = repository
-        self._tr = translator
-        self.changed = False
-
-        self.setWindowTitle(self._tr("trash_dialog_title"))
-        self.resize(560, 480)
-
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(22, 22, 22, 18)
-        layout.setSpacing(14)
-
-        title = QtWidgets.QLabel(self._tr("trash_dialog_title"))
-        title.setObjectName("DialogTitle")
-        subtitle = QtWidgets.QLabel(self._tr("trash_dialog_description"))
-        subtitle.setObjectName("DialogSubtitle")
-        subtitle.setWordWrap(True)
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
-
-        self.empty_label = QtWidgets.QLabel(self._tr("trash_empty"))
-        self.empty_label.setObjectName("TrashEmpty")
-        self.empty_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        self.list_widget = QtWidgets.QListWidget()
-        self.list_widget.setObjectName("TrashList")
-        self.list_widget.setSpacing(6)
-        layout.addWidget(self.list_widget, stretch=1)
-        layout.addWidget(self.empty_label, stretch=1)
-
-        close_button = QtWidgets.QPushButton(self._tr("dialog_close"))
-        close_button.setObjectName("DialogCloseButton")
-        close_button.clicked.connect(self.accept)
-        layout.addWidget(close_button, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
-
-        self._refresh()
-
-    def _refresh(self) -> None:
-        notes = self.repository.list_trashed_notes()
-        self.list_widget.clear()
-        self.list_widget.setVisible(bool(notes))
-        self.empty_label.setVisible(not notes)
-
-        for note in notes:
-            item = QtWidgets.QListWidgetItem()
-            item.setData(QtCore.Qt.ItemDataRole.UserRole, note.id)
-            item.setSizeHint(QtCore.QSize(500, 66))
-            self.list_widget.addItem(item)
-
-            widget = TrashNoteWidget(note, self._format_datetime(note.updated_at), self.list_widget)
-            widget.restoreRequested.connect(self._restore_note)
-            widget.deleteRequested.connect(self._delete_note_permanently)
-            self.list_widget.setItemWidget(item, widget)
-
-    def _restore_note(self, note_id: str) -> None:
-        self.repository.restore_from_trash(note_id)
-        self.changed = True
-        self._refresh()
-
-    def _delete_note_permanently(self, note_id: str) -> None:
-        note = self.repository.get_trashed_note(note_id)
-        message_box = QtWidgets.QMessageBox(self)
-        message_box.setWindowTitle(self._tr("trash_delete_title"))
-        message_box.setText(self._tr("trash_delete_text", title=note.display_title))
-        delete_button = message_box.addButton(
-            self._tr("trash_delete_confirm"),
-            QtWidgets.QMessageBox.ButtonRole.DestructiveRole,
-        )
-        message_box.addButton(self._tr("dialog_cancel"), QtWidgets.QMessageBox.ButtonRole.RejectRole)
-        message_box.exec()
-
-        if message_box.clickedButton() != delete_button:
-            return
-
-        self.repository.delete_from_trash(note_id)
-        self.changed = True
-        self._refresh()
-
-    def _format_datetime(self, value) -> str:
-        return value.astimezone().strftime("%d.%m.%Y, %H:%M")
-
-
-class HelpDialog(QtWidgets.QDialog):
-    def __init__(self, translator, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._tr = translator
-        self.setWindowTitle(self._tr("help_dialog_title"))
-        self.resize(700, 680)
-
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(28, 26, 28, 24)
-        layout.setSpacing(16)
-
-        header = QtWidgets.QHBoxLayout()
-        header.setSpacing(14)
-        icon_tile = QtWidgets.QLabel()
-        icon_tile.setObjectName("HelpDialogIconTile")
-        icon_tile.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        icon_tile.setPixmap(build_simple_icon("question", "#172b65", 34).pixmap(26, 26))
-        title_box = QtWidgets.QVBoxLayout()
-        title_box.setSpacing(4)
-        title = QtWidgets.QLabel(self._tr("help_dialog_title"))
-        title.setObjectName("DialogTitle")
-        subtitle = QtWidgets.QLabel(self._tr("help_dialog_subtitle"))
-        subtitle.setObjectName("DialogSubtitle")
-        subtitle.setWordWrap(True)
-        title_box.addWidget(title)
-        title_box.addWidget(subtitle)
-        header.addWidget(icon_tile)
-        header.addLayout(title_box, stretch=1)
-        layout.addLayout(header)
-
-        steps_layout = QtWidgets.QVBoxLayout()
-        steps_layout.setSpacing(10)
-        for number in range(1, 6):
-            steps_layout.addWidget(
-                self._build_step_card(
-                    number,
-                    self._tr(f"help_step_{number}_title"),
-                    self._tr(f"help_step_{number}_text"),
-                )
-            )
-        layout.addLayout(steps_layout)
-
-        close_button = QtWidgets.QPushButton(self._tr("dialog_close"))
-        close_button.setObjectName("DialogCloseButton")
-        close_button.clicked.connect(self.accept)
-        layout.addWidget(close_button, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
-
-    def _build_step_card(self, number: int, title: str, text: str) -> QtWidgets.QFrame:
-        card = QtWidgets.QFrame()
-        card.setObjectName("HelpStepCard")
-        card.setMinimumHeight(86)
-        card.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
-        layout = QtWidgets.QHBoxLayout(card)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(12)
-
-        number_label = QtWidgets.QLabel(str(number))
-        number_label.setObjectName("HelpStepNumber")
-        number_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        text_layout = QtWidgets.QVBoxLayout()
-        text_layout.setSpacing(3)
-        title_label = QtWidgets.QLabel(title)
-        title_label.setObjectName("HelpStepTitle")
-        body_label = QtWidgets.QLabel(text)
-        body_label.setObjectName("HelpStepText")
-        body_label.setWordWrap(True)
-        body_label.setMinimumHeight(body_label.fontMetrics().lineSpacing() * 2 + 8)
-        body_label.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
-        text_layout.addWidget(title_label)
-        text_layout.addWidget(body_label)
-
-        layout.addWidget(number_label)
-        layout.addLayout(text_layout, stretch=1)
-        return card
-
-
-class ImageListWidget(QtWidgets.QListWidget):
-    imageReorderRequested = QtCore.Signal(str, int)
-
-    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setAcceptDrops(True)
-        self.viewport().setAcceptDrops(True)
-        self.setDragEnabled(False)
-        self.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.DropOnly)
-        self.setDropIndicatorShown(True)
-        self.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
-
-    def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
-        if event.mimeData().hasFormat(IMAGE_REORDER_MIME):
-            event.acceptProposedAction()
-            return
-        event.ignore()
-
-    def dragMoveEvent(self, event: QtGui.QDragMoveEvent) -> None:
-        if event.mimeData().hasFormat(IMAGE_REORDER_MIME):
-            event.acceptProposedAction()
-            return
-        event.ignore()
-
-    def dropEvent(self, event: QtGui.QDropEvent) -> None:
-        if not event.mimeData().hasFormat(IMAGE_REORDER_MIME):
-            event.ignore()
-            return
-
-        relative_path = bytes(event.mimeData().data(IMAGE_REORDER_MIME)).decode("utf-8")
-        insert_index = self._drop_insert_index(event.position().toPoint())
-        source_row = self._row_for_relative_path(relative_path)
-        if source_row is None:
-            event.ignore()
-            return
-
-        if source_row < insert_index:
-            insert_index -= 1
-        if source_row == insert_index:
-            event.acceptProposedAction()
-            return
-
-        self.imageReorderRequested.emit(relative_path, insert_index)
-        event.acceptProposedAction()
-
-    def _drop_insert_index(self, position: QtCore.QPoint) -> int:
-        target_item = self.itemAt(position)
-        if target_item is None:
-            return self.count()
-
-        target_row = self.row(target_item)
-        target_rect = self.visualItemRect(target_item)
-        if position.x() > target_rect.center().x():
-            target_row += 1
-        return target_row
-
-    def _row_for_relative_path(self, relative_path: str) -> int | None:
-        for row in range(self.count()):
-            item = self.item(row)
-            if item.data(QtCore.Qt.ItemDataRole.UserRole) == relative_path:
-                return row
-        return None
-
-
-class ImageThumbnailWidget(QtWidgets.QFrame):
-    selectedRequested = QtCore.Signal(str)
-    previewRequested = QtCore.Signal(str)
-    removeRequested = QtCore.Signal(str)
-    reorderRequested = QtCore.Signal(str, str, bool)
-
-    def __init__(self, relative_path: str, image_path: Path, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.relative_path = relative_path
-        self.image_path = image_path
-        self._press_pos: QtCore.QPoint | None = None
-        self._drag_started = False
-        self.setObjectName("ImageThumbnailWidget")
-        self.setMouseTracking(True)
-        self.setAcceptDrops(True)
-        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.setFixedSize(152, 116)
-
-        layout = QtWidgets.QGridLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(0)
-
-        self.image_label = QtWidgets.QLabel()
-        self.image_label.setObjectName("ThumbnailImage")
-        self.image_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setFixedSize(142, 106)
-        self.image_label.setPixmap(self._thumbnail_pixmap())
-        self.image_label.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-
-        self.trash_button = QtWidgets.QPushButton()
-        self.trash_button.setObjectName("ThumbnailTrashButton")
-        self.trash_button.setIcon(build_simple_icon("trash", "#c4322b", 36))
-        self.trash_button.setIconSize(QtCore.QSize(22, 22))
-        self.trash_button.setFixedSize(34, 34)
-        self.trash_button.hide()
-
-        layout.addWidget(self.image_label, 0, 0)
-        layout.addWidget(
-            self.trash_button,
-            0,
-            0,
-            alignment=QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignRight,
-        )
-
-        self.trash_button.clicked.connect(lambda: self.removeRequested.emit(self.relative_path))
-
-    def set_selected(self, is_selected: bool) -> None:
-        self.setProperty("active", is_selected)
-        self.style().unpolish(self)
-        self.style().polish(self)
-
-    def enterEvent(self, event: QtCore.QEvent) -> None:
-        self.trash_button.show()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event: QtCore.QEvent) -> None:
-        self.trash_button.hide()
-        super().leaveEvent(event)
-
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self._press_pos = event.position().toPoint()
-            self._drag_started = False
-            self.selectedRequested.emit(self.relative_path)
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        if (
-            self._press_pos is not None
-            and not self._drag_started
-            and event.buttons() & QtCore.Qt.MouseButton.LeftButton
-            and (event.position().toPoint() - self._press_pos).manhattanLength()
-            >= QtWidgets.QApplication.startDragDistance()
-        ):
-            self._drag_started = True
-            drag = QtGui.QDrag(self)
-            mime_data = QtCore.QMimeData()
-            mime_data.setData(IMAGE_REORDER_MIME, self.relative_path.encode("utf-8"))
-            drag.setMimeData(mime_data)
-            drag.setPixmap(self.grab())
-            drag.setHotSpot(self._press_pos)
-            drag.exec(QtCore.Qt.DropAction.MoveAction)
-            event.accept()
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
-        if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            should_preview = (
-                self._press_pos is not None
-                and not self._drag_started
-                and self.rect().contains(event.position().toPoint())
-            )
-            self._press_pos = None
-            self._drag_started = False
-            if should_preview:
-                self.previewRequested.emit(self.relative_path)
-            event.accept()
-            return
-        super().mouseReleaseEvent(event)
-
-    def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
-        if self._drop_source_path(event.mimeData()):
-            event.acceptProposedAction()
-            return
-        event.ignore()
-
-    def dragMoveEvent(self, event: QtGui.QDragMoveEvent) -> None:
-        if self._drop_source_path(event.mimeData()):
-            event.acceptProposedAction()
-            return
-        event.ignore()
-
-    def dropEvent(self, event: QtGui.QDropEvent) -> None:
-        source_path = self._drop_source_path(event.mimeData())
-        if not source_path:
-            event.ignore()
-            return
-
-        insert_after_target = event.position().x() > self.width() / 2
-        self.reorderRequested.emit(source_path, self.relative_path, insert_after_target)
-        event.acceptProposedAction()
-
-    def _drop_source_path(self, mime_data: QtCore.QMimeData) -> str | None:
-        if not mime_data.hasFormat(IMAGE_REORDER_MIME):
-            return None
-
-        source_path = bytes(mime_data.data(IMAGE_REORDER_MIME)).decode("utf-8")
-        if source_path == self.relative_path:
-            return None
-        return source_path
-
-    def _thumbnail_pixmap(self) -> QtGui.QPixmap:
-        pixmap = QtGui.QPixmap(str(self.image_path))
-        if pixmap.isNull():
-            fallback = QtGui.QPixmap(142, 106)
-            fallback.fill(QtGui.QColor("#f1f5fb"))
-            return fallback
-
-        return pixmap.scaled(
-            142,
-            106,
-            QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            QtCore.Qt.TransformationMode.SmoothTransformation,
-        )
-
-
-class ImagePreviewDialog(QtWidgets.QDialog):
-    def __init__(
-        self,
-        image_path: Path,
-        title: str,
-        parent: QtWidgets.QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self.image_path = image_path
-        self.original_pixmap = QtGui.QPixmap(str(image_path))
-        self.setWindowTitle(title)
-        self.resize(900, 680)
-
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 14)
-        layout.setSpacing(12)
-
-        self.image_label = QtWidgets.QLabel()
-        self.image_label.setObjectName("PreviewImage")
-        self.image_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setMinimumSize(520, 420)
-        layout.addWidget(self.image_label, stretch=1)
-
-        close_button = QtWidgets.QPushButton("Zamknij")
-        close_button.setObjectName("DialogCloseButton")
-        close_button.clicked.connect(self.accept)
-        layout.addWidget(close_button, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
-
-        self._update_preview()
-
-    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
-        super().resizeEvent(event)
-        self._update_preview()
-
-    def _update_preview(self) -> None:
-        if self.original_pixmap.isNull():
-            self.image_label.setText("Nie udało się wczytać podglądu")
-            return
-
-        self.image_label.setPixmap(
-            self.original_pixmap.scaled(
-                self.image_label.size(),
-                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
-            )
-        )
-
-
-class PDFPreviewDialog(QtWidgets.QDialog):
-    def __init__(
-        self,
-        pdf_path: Path,
-        title: str,
-        parent: QtWidgets.QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        try:
-            from PySide6 import QtPdf, QtPdfWidgets
-        except ModuleNotFoundError as error:
-            raise RuntimeError(
-                "Brakuje modułów Qt potrzebnych do podglądu PDF. "
-                "Upewnij się, że PySide6 jest poprawnie zainstalowane."
-            ) from error
-
-        self.pdf_path = pdf_path
-        self.setWindowTitle(title)
-        self.resize(1100, 780)
-        self._zoom_factor = 0.82
-
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
-
-        toolbar = QtWidgets.QHBoxLayout()
-        toolbar.setContentsMargins(0, 0, 0, 0)
-        toolbar.setSpacing(8)
-        toolbar.addStretch()
-        self.zoom_out_button = QtWidgets.QPushButton("−")
-        self.zoom_out_button.setObjectName("IconButton")
-        self.zoom_label = QtWidgets.QLabel()
-        self.zoom_label.setObjectName("StatusMeta")
-        self.zoom_label.setMinimumWidth(54)
-        self.zoom_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.zoom_in_button = QtWidgets.QPushButton("+")
-        self.zoom_in_button.setObjectName("IconButton")
-        self.fit_width_button = QtWidgets.QPushButton("Dopasuj")
-        self.fit_width_button.setObjectName("DialogCloseButton")
-        toolbar.addWidget(self.zoom_out_button)
-        toolbar.addWidget(self.zoom_label)
-        toolbar.addWidget(self.zoom_in_button)
-        toolbar.addWidget(self.fit_width_button)
-        layout.addLayout(toolbar)
-
-        self.pdf_document = QtPdf.QPdfDocument(self)
-        load_error = self.pdf_document.load(str(pdf_path))
-        if load_error != QtPdf.QPdfDocument.Error.None_:
-            raise RuntimeError("Nie udało się wczytać wygenerowanego podglądu PDF.")
-
-        self.pdf_view = QtPdfWidgets.QPdfView()
-        self.pdf_view.setObjectName("PDFPreviewView")
-        self.pdf_view.setDocument(self.pdf_document)
-        self.pdf_view.setPageMode(QtPdfWidgets.QPdfView.PageMode.MultiPage)
-        self.pdf_view.setZoomMode(QtPdfWidgets.QPdfView.ZoomMode.Custom)
-        self.pdf_view.setZoomFactor(self._zoom_factor)
-        self.pdf_view.viewport().installEventFilter(self)
-        layout.addWidget(self.pdf_view, stretch=1)
-
-        self.zoom_out_button.clicked.connect(lambda: self._change_zoom(-0.10))
-        self.zoom_in_button.clicked.connect(lambda: self._change_zoom(0.10))
-        self.fit_width_button.clicked.connect(self._fit_to_width)
-        self._update_zoom_label()
-
-    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-        if watched is self.pdf_view.viewport() and event.type() == QtCore.QEvent.Type.Wheel:
-            if event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
-                wheel_event = event
-                delta = 0.08 if wheel_event.angleDelta().y() > 0 else -0.08
-                self._change_zoom(delta)
-                return True
-        return super().eventFilter(watched, event)
-
-    def _change_zoom(self, delta: float) -> None:
-        self._set_zoom(self.pdf_view.zoomFactor() + delta)
-
-    def _set_zoom(self, zoom_factor: float) -> None:
-        self._zoom_factor = max(0.35, min(2.4, zoom_factor))
-        self.pdf_view.setZoomMode(self.pdf_view.ZoomMode.Custom)
-        self.pdf_view.setZoomFactor(self._zoom_factor)
-        self._update_zoom_label()
-
-    def _fit_to_width(self) -> None:
-        self.pdf_view.setZoomMode(self.pdf_view.ZoomMode.FitToWidth)
-        self._zoom_factor = self.pdf_view.zoomFactor()
-        self.zoom_label.setText("Auto")
-
-    def _update_zoom_label(self) -> None:
-        self.zoom_label.setText(f"{round(self._zoom_factor * 100)}%")
-
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
-        self.pdf_document.close()
-        try:
-            self.pdf_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-        super().closeEvent(event)
-
-
-class LoadingSpinner(QtWidgets.QWidget):
-    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._angle = 0
-        self._timer = QtCore.QTimer(self)
-        self._timer.setInterval(16)
-        self._timer.timeout.connect(self._tick)
-        self.setFixedSize(86, 86)
-
-    def start(self) -> None:
-        self._timer.start()
-        self.show()
-
-    def stop(self) -> None:
-        self._timer.stop()
-        self.hide()
-
-    def _tick(self) -> None:
-        self._angle = (self._angle + 5) % 360
-        self.update()
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        super().paintEvent(event)
-        painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-
-        rect = self.rect().adjusted(10, 10, -10, -10)
-        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        segment_count = 72
-        segment_span = 360 / segment_count
-        dark_color = QtGui.QColor(30, 58, 138)
-        light_color = QtGui.QColor(30, 58, 138)
-
-        for segment in range(segment_count):
-            progress = segment / (segment_count - 1)
-            end_fade = math.sin(progress * math.pi)
-            blue_strength = min(1.0, max(0.0, (progress - 0.38) / 0.42))
-            alpha = int((24 + 196 * blue_strength) * end_fade)
-            color = QtGui.QColor(dark_color if blue_strength > 0.5 else light_color)
-            color.setAlpha(alpha)
-            pen = QtGui.QPen(color, 9)
-            pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-            painter.setPen(pen)
-            start_angle = int((self._angle - segment * segment_span) * 16)
-            span_angle = int(-segment_span * 0.82 * 16)
-            painter.drawArc(rect, start_angle, span_angle)
-
-        pen = QtGui.QPen(QtGui.QColor(30, 58, 138, 12), 9)
-        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen)
-        painter.drawEllipse(rect)
-
-
-class LoadingOverlay(QtWidgets.QWidget):
-    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setObjectName("LoadingOverlay")
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.hide()
-
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        self.card = QtWidgets.QFrame()
-        self.card.setObjectName("LoadingCard")
-        card_layout = QtWidgets.QVBoxLayout(self.card)
-        card_layout.setContentsMargins(34, 30, 34, 28)
-        card_layout.setSpacing(16)
-        card_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        self.spinner = LoadingSpinner(self.card)
-        self.label = QtWidgets.QLabel()
-        self.label.setObjectName("LoadingLabel")
-        self.label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        card_layout.addWidget(self.spinner, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
-        card_layout.addWidget(self.label)
-        layout.addWidget(self.card)
-
-    def set_text(self, text: str) -> None:
-        self.label.setText(text)
-
-    def start(self) -> None:
-        self.setGeometry(self.parentWidget().rect() if self.parentWidget() else self.geometry())
-        self.raise_()
-        self.show()
-        self.spinner.start()
-
-    def stop(self) -> None:
-        self.spinner.stop()
-        self.hide()
-
-
-class ResponsiveEditorToolbar(QtWidgets.QFrame):
-    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._items: list[QtWidgets.QWidget] = []
-        self._actions: list[QtGui.QAction] = []
-        self._icon_size = QtCore.QSize(22, 22)
-        self._row_count = 1
-        self._margins = QtCore.QMargins(10, 8, 10, 8)
-        self._horizontal_spacing = 6
-        self._vertical_spacing = 6
-        self._row_height = 38
-        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Maximum)
-        self.setMinimumWidth(0)
-
-    def setMovable(self, _is_movable: bool) -> None:
-        return
-
-    def setFloatable(self, _is_floatable: bool) -> None:
-        return
-
-    def setIconSize(self, icon_size: QtCore.QSize) -> None:
-        self._icon_size = icon_size
-        for item in self._items:
-            if isinstance(item, QtWidgets.QToolButton):
-                item.setIconSize(icon_size)
-
-    def addAction(self, icon: QtGui.QIcon, text: str = "") -> QtGui.QAction:  # type: ignore[override]
-        action = QtGui.QAction(icon, text, self)
-        button = QtWidgets.QToolButton(self)
-        button.setDefaultAction(action)
-        button.setAutoRaise(True)
-        button.setIconSize(self._icon_size)
-        button.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self._actions.append(action)
-        QtWidgets.QWidget.addAction(self, action)
-        self._add_item(button)
-        return action
-
-    def addWidget(self, widget: QtWidgets.QWidget) -> QtWidgets.QWidget:  # type: ignore[override]
-        self._add_item(widget)
-        return widget
-
-    def addSeparator(self) -> None:
-        separator = QtWidgets.QFrame(self)
-        separator.setObjectName("ToolbarSeparator")
-        separator.setFrameShape(QtWidgets.QFrame.Shape.VLine)
-        separator.setFixedWidth(1)
-        self._add_item(separator)
-
-    def actions(self) -> list[QtGui.QAction]:  # type: ignore[override]
-        return self._actions
-
-    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
-        super().resizeEvent(event)
-        self._reflow()
-
-    def sizeHint(self) -> QtCore.QSize:
-        return QtCore.QSize(640, self._toolbar_height())
-
-    def minimumSizeHint(self) -> QtCore.QSize:
-        return QtCore.QSize(120, self._toolbar_height())
-
-    def _add_item(self, widget: QtWidgets.QWidget) -> None:
-        widget.setParent(self)
-        widget.show()
-        self._items.append(widget)
-        QtCore.QTimer.singleShot(0, self._reflow)
-
-    def _reflow(self) -> None:
-        if not self._items:
-            return
-
-        for widget in self._items:
-            widget.hide()
-
-        available_width = max(120, self.width() - self._margins.left() - self._margins.right())
-        row = 0
-        row_width = 0
-        rows: list[list[QtWidgets.QWidget]] = [[], []]
-
-        for leading_separator, widgets in self._toolbar_groups():
-            if not widgets:
-                continue
-
-            group_widgets = list(widgets)
-            include_separator = leading_separator is not None and row_width > 0
-            group_items = (
-                [leading_separator, *group_widgets] if include_separator else group_widgets
-            )
-            group_width = self._widgets_width(group_items)
-            next_width = (
-                group_width
-                if row_width == 0
-                else row_width + self._horizontal_spacing + group_width
-            )
-
-            if row == 0 and row_width > 0 and next_width > available_width:
-                row = 1
-                row_width = 0
-                include_separator = False
-                group_items = group_widgets
-                group_width = self._widgets_width(group_items)
-
-            rows[row].extend(widget for widget in group_items if widget is not None)
-            row_width = group_width if row_width == 0 else row_width + self._horizontal_spacing + group_width
-
-        self._row_count = 2 if rows[1] else 1
-        self._position_row_widgets(rows[0], 0)
-        self._position_row_widgets(rows[1], 1)
-        height = self._toolbar_height()
-        if self.minimumHeight() != height:
-            self.setMinimumHeight(height)
-            self.setMaximumHeight(height)
-        self.updateGeometry()
-
-    def _position_row_widgets(self, widgets: list[QtWidgets.QWidget], row: int) -> None:
-        x = self._margins.left()
-        y = self._margins.top() + row * (self._row_height + self._vertical_spacing)
-        for widget in widgets:
-            width = self._item_width(widget)
-            if widget.objectName() == "ToolbarSeparator":
-                separator_height = 22
-                widget.setGeometry(
-                    x + (width - 1) // 2,
-                    y + (self._row_height - separator_height) // 2,
-                    1,
-                    separator_height,
-                )
-            else:
-                height = min(max(widget.sizeHint().height(), widget.minimumSizeHint().height(), 30), self._row_height)
-                widget.setGeometry(x, y + (self._row_height - height) // 2, width, height)
-            widget.show()
-            x += width + self._horizontal_spacing
-
-    def _toolbar_height(self) -> int:
-        height = self._margins.top() + self._margins.bottom() + self._row_count * self._row_height
-        if self._row_count > 1:
-            height += self._vertical_spacing
-        return height
-
-    def _toolbar_groups(self) -> list[tuple[QtWidgets.QWidget | None, list[QtWidgets.QWidget]]]:
-        groups: list[tuple[QtWidgets.QWidget | None, list[QtWidgets.QWidget]]] = []
-        leading_separator: QtWidgets.QWidget | None = None
-        current_group: list[QtWidgets.QWidget] = []
-
-        for widget in self._items:
-            if widget.objectName() == "ToolbarSeparator":
-                if current_group:
-                    groups.append((leading_separator, current_group))
-                    current_group = []
-                leading_separator = widget
-                continue
-
-            current_group.append(widget)
-
-        if current_group:
-            groups.append((leading_separator, current_group))
-
-        return groups
-
-    def _widgets_width(self, widgets: list[QtWidgets.QWidget | None]) -> int:
-        visible_widgets = [widget for widget in widgets if widget is not None]
-        if not visible_widgets:
-            return 0
-
-        return sum(self._item_width(widget) for widget in visible_widgets) + self._horizontal_spacing * (
-            len(visible_widgets) - 1
-        )
-
-    def _item_width(self, widget: QtWidgets.QWidget) -> int:
-        if widget.objectName() == "ToolbarSeparator":
-            return 11
-        if widget.maximumWidth() < 16777215:
-            return widget.maximumWidth()
-        return max(widget.minimumSizeHint().width(), widget.sizeHint().width(), widget.minimumWidth())
-
-
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(
         self,
@@ -1144,6 +85,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ai_thread: QtCore.QThread | None = None
         self.ai_worker: AITranscriptionWorker | None = None
         self._updating_format_controls = False
+        self._is_displaying_note = False
+        self.autosave_timer = QtCore.QTimer(self)
+        self.autosave_timer.setSingleShot(True)
+        self.autosave_timer.setInterval(1400)
+        self.autosave_timer.timeout.connect(self._autosave_current_note)
         self.app_language = app_config.app_language if app_config.app_language in {"pl", "en"} else "pl"
 
         self.resize(1100, 720)
@@ -2042,6 +988,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 gemini_api_key=self.app_config.gemini_api_key or "",
                 gemini_model=self.app_config.gemini_model,
                 app_language=self.app_language,
+                onboarding_completed=self.app_config.onboarding_completed,
+                store_api_key_securely=True,
             )
         except OSError:
             pass
@@ -2086,6 +1034,8 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def _mark_note_as_unsaved(self) -> None:
+        if self._is_displaying_note:
+            return
         if self.current_note is None:
             self._set_note_meta_text(self._tr("note_meta_draft"), is_unsaved=True)
             return
@@ -2097,6 +1047,7 @@ class MainWindow(QtWidgets.QMainWindow):
             is_unsaved=True,
             status=status,
         )
+        self.autosave_timer.start()
 
     def _set_note_meta_text(self, text: str, *, is_unsaved: bool, status: str | None = None) -> None:
         safe_text = escape(text)
@@ -2636,12 +1587,20 @@ class MainWindow(QtWidgets.QMainWindow):
             self.current_note = Note.create_empty()
             self.current_note.title = self._tr("default_note_title")
 
+        self.autosave_timer.stop()
         self._sync_form_to_current_note()
         saved_note = self.repository.save(self.current_note)
         self.current_note = saved_note
         self.refresh_notes(selected_note_id=saved_note.id)
+        self._update_note_meta_label()
         if show_status:
             self.statusBar().showMessage(self._tr("status_saved_note", title=saved_note.display_title))
+
+    def _autosave_current_note(self) -> None:
+        if self.current_note is None or self.ai_thread is not None:
+            return
+
+        self._save_current_note(show_status=False)
 
     def _delete_current_note(self) -> None:
         if self.current_note is None:
@@ -2842,6 +1801,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.current_note.image_paths:
             self.statusBar().showMessage(self._tr("status_add_images_before_ai"))
             return
+        if not self._confirm_image_quality_before_ai():
+            self.statusBar().showMessage(self._tr("status_image_quality_cancelled"))
+            return
 
         try:
             prepared_images = self.image_preparation_service.prepare_note_images(
@@ -2879,6 +1841,47 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ai_thread.finished.connect(self._finish_ai_transcription)
         self.ai_thread.start()
 
+    def _confirm_image_quality_before_ai(self) -> bool:
+        if self.current_note is None:
+            return False
+
+        try:
+            issues = self.image_preparation_service.analyze_note_image_quality(
+                self.current_note,
+                self.repository,
+            )
+        except RuntimeError:
+            return True
+
+        if not issues:
+            return True
+
+        grouped: dict[str, list[str]] = {}
+        for issue in issues:
+            grouped.setdefault(issue.source_path.name, []).append(
+                self._tr(f"image_quality_{issue.issue_code}")
+            )
+
+        issue_lines = [
+            f"• {filename}: {', '.join(dict.fromkeys(labels))}"
+            for filename, labels in grouped.items()
+        ]
+        message_box = QtWidgets.QMessageBox(self)
+        message_box.setWindowTitle(self._tr("dialog_image_quality_title"))
+        message_box.setText(
+            self._tr("dialog_image_quality_text", issues="\n".join(issue_lines[:8]))
+        )
+        continue_button = message_box.addButton(
+            self._tr("dialog_image_quality_continue"),
+            QtWidgets.QMessageBox.ButtonRole.AcceptRole,
+        )
+        message_box.addButton(
+            self._tr("dialog_image_quality_improve"),
+            QtWidgets.QMessageBox.ButtonRole.RejectRole,
+        )
+        message_box.exec()
+        return message_box.clickedButton() == continue_button
+
     def _open_ai_settings(self) -> None:
         dialog = AISettingsDialog(self.app_config, self.app_language, self)
         if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
@@ -2890,6 +1893,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 gemini_api_key=dialog.api_key,
                 gemini_model=dialog.model_name,
                 app_language=dialog.app_language,
+                onboarding_completed=True,
+                store_api_key_securely=True,
             )
         except OSError as error:
             QtWidgets.QMessageBox.warning(
@@ -2899,7 +1904,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             return
 
-        self.app_config = load_app_config(base_dir=self.repository.base_dir)
+        self.app_config = load_app_config(base_dir=self.repository.base_dir, env_path=Path.cwd() / ".env")
         self.app_language = (
             self.app_config.app_language if self.app_config.app_language in {"pl", "en"} else "pl"
         )
@@ -3142,6 +2147,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return QtGui.QIcon(thumbnail)
 
     def _display_note(self, note: Note) -> None:
+        self._is_displaying_note = True
         self.current_note = note
         self.title_input.blockSignals(True)
         self.title_input.setText(note.title)
@@ -3162,6 +2168,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_note_meta_label()
         self._update_character_count()
         self._update_assistant_panel()
+        self._is_displaying_note = False
 
     def _has_note_item(self, note_id: str) -> bool:
         for row in range(self.note_list.count()):

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "notatki-ai-desktop"
 version = "0.1.0"
-description = "Desktopowa aplikacja do zamiany odręcznych notatek ze zdjęć na edytowalne notatki tekstowe."
+description = "Desktop application for converting handwritten notes from photos into editable text notes."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
@@ -16,6 +16,7 @@ dependencies = [
   "Pillow>=11.0",
   "PySide6>=6.7",
   "google-genai>=1.0",
+  "keyring>=25.0",
 ]
 
 [project.scripts]

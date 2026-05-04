@@ -7,6 +7,8 @@ from pathlib import Path
 
 
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite"
+KEYRING_SERVICE_NAME = "Ink2Text"
+KEYRING_API_KEY_USERNAME = "gemini_api_key"
 SUPPORTED_GEMINI_MODELS = (
     "gemini-2.5-flash-lite",
     "gemini-2.5-flash",
@@ -19,12 +21,16 @@ class AppConfig:
     gemini_api_key: str | None
     gemini_model: str
     app_language: str
+    onboarding_completed: bool
     config_path: Path
     load_error: str | None = None
 
 
 def load_app_config(base_dir: Path | None = None, env_path: Path | None = None) -> AppConfig:
-    _load_dotenv_file(env_path or Path.cwd() / ".env")
+    if env_path is not None:
+        _load_dotenv_file(env_path)
+    elif base_dir is None:
+        _load_dotenv_file(Path.cwd() / ".env")
 
     app_data_dir = base_dir or Path.cwd() / "app_data"
     config_path = app_data_dir / "config.json"
@@ -58,6 +64,7 @@ def load_app_config(base_dir: Path | None = None, env_path: Path | None = None) 
     gemini_api_key = (
         os.getenv("GOOGLE_API_KEY")
         or os.getenv("GEMINI_API_KEY")
+        or _load_api_key_from_keyring()
         or payload.get("gemini_api_key")
     )
     gemini_model = (
@@ -71,11 +78,13 @@ def load_app_config(base_dir: Path | None = None, env_path: Path | None = None) 
         or payload.get("app_language")
         or "pl"
     )
+    onboarding_completed = payload.get("onboarding_completed") == "true"
 
     return AppConfig(
         gemini_api_key=gemini_api_key,
         gemini_model=gemini_model,
         app_language=app_language,
+        onboarding_completed=onboarding_completed,
         config_path=config_path,
         load_error=load_error,
     )
@@ -86,16 +95,53 @@ def save_app_config(
     gemini_api_key: str,
     gemini_model: str,
     app_language: str = "pl",
+    onboarding_completed: bool | None = None,
+    store_api_key_securely: bool = False,
 ) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
+    api_key_stored_securely = False
+    if store_api_key_securely and gemini_api_key:
+        api_key_stored_securely = _save_api_key_to_keyring(gemini_api_key)
+
     payload = {
-        "gemini_api_key": gemini_api_key,
         "gemini_model": gemini_model,
         "app_language": app_language,
     }
+    if not api_key_stored_securely:
+        payload["gemini_api_key"] = gemini_api_key
+    if onboarding_completed is not None:
+        payload["onboarding_completed"] = "true" if onboarding_completed else "false"
     with config_path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, ensure_ascii=False, indent=2)
         file.write("\n")
+
+
+def _load_api_key_from_keyring() -> str | None:
+    try:
+        import keyring
+    except ModuleNotFoundError:
+        return None
+
+    try:
+        value = keyring.get_password(KEYRING_SERVICE_NAME, KEYRING_API_KEY_USERNAME)
+    except Exception:
+        return None
+
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _save_api_key_to_keyring(api_key: str) -> bool:
+    try:
+        import keyring
+    except ModuleNotFoundError:
+        return False
+
+    try:
+        keyring.set_password(KEYRING_SERVICE_NAME, KEYRING_API_KEY_USERNAME, api_key)
+    except Exception:
+        return False
+
+    return True
 
 
 def _load_dotenv_file(env_path: Path) -> None:
