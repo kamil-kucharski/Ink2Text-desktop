@@ -155,6 +155,77 @@ QFrame#TipCard {
     border: 1px solid #dbe5ff;
     border-radius: 10px;
 }
+QFrame#HelpTipsButton {
+    background: #ffffff;
+    border: 1px solid #dfe5ef;
+    border-radius: 10px;
+    min-height: 48px;
+}
+QFrame#HelpTipsButton:hover {
+    background: #fbfcff;
+    border-color: #cfd8e8;
+}
+QLabel#HelpTipsIcon,
+QLabel#HelpTipsArrow {
+    min-width: 22px;
+    max-width: 22px;
+}
+QLabel#HelpTipsText {
+    color: #66728a;
+    font-size: 13px;
+    font-weight: 800;
+}
+QLabel#HelpDialogIconTile {
+    background: #f3f6ff;
+    border: 1px solid #dbe5ff;
+    border-radius: 16px;
+    min-width: 54px;
+    max-width: 54px;
+    min-height: 54px;
+    max-height: 54px;
+}
+QFrame#HelpStepCard {
+    background: #ffffff;
+    border: 1px solid #e4e9f2;
+    border-radius: 16px;
+}
+QFrame#HelpStepCard:hover {
+    background: #fbfcff;
+    border-color: #d5deeb;
+}
+QLabel#HelpStepNumber {
+    background: #edf3ff;
+    color: #1e3a8a;
+    border: 1px solid #dbe5ff;
+    border-radius: 14px;
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    font-size: 13px;
+    font-weight: 900;
+}
+QLabel#HelpStepTitle {
+    color: #101a33;
+    font-size: 14px;
+    font-weight: 900;
+}
+QLabel#HelpStepText {
+    color: #66728a;
+    font-size: 13px;
+    line-height: 1.45;
+}
+QFrame#HelpHighlightCard {
+    background: #f3f6ff;
+    border: 1px solid #dbe5ff;
+    border-radius: 16px;
+}
+QLabel#HelpHighlightText {
+    color: #526079;
+    font-size: 13px;
+    line-height: 1.45;
+    font-weight: 700;
+}
 QFrame#SettingsCard {
     background: #ffffff;
     border: 1px solid #e4e9f2;
