@@ -122,7 +122,7 @@ class MenuSelectButton(QtWidgets.QPushButton):
 
     def _update_button_label(self) -> None:
         text = self.currentText() or self._placeholder_text
-        self.setText(f"   {text}")
+        self.setText(text)
 
     def _toggle_popup(self) -> None:
         if self._popup.isVisible():

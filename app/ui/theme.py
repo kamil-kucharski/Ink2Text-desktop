@@ -480,6 +480,10 @@ QPushButton#AssistantModeButton {
     padding-left: 20px;
     padding-right: 38px;
 }
+QPushButton#FontSizeButton {
+    padding-left: 10px;
+    padding-right: 26px;
+}
 QLineEdit,
 QTextEdit {
     background: #ffffff;

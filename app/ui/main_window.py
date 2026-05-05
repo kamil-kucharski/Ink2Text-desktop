@@ -733,8 +733,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.content_input.textChanged.connect(self._update_character_count)
         self.content_input.textChanged.connect(self._mark_note_as_unsaved)
         self.title_input.textChanged.connect(self._mark_note_as_unsaved)
+        self.content_input.undoAvailable.connect(self.undo_action.setEnabled)
+        self.content_input.redoAvailable.connect(self.redo_action.setEnabled)
         self.content_input.currentCharFormatChanged.connect(self._sync_format_controls)
         self.content_input.cursorPositionChanged.connect(self._sync_format_controls)
+        self._update_undo_redo_actions()
 
     def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
         if watched is getattr(self, "title_icon_tile", None):
@@ -802,8 +805,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.font_size_input = MenuSelectButton()
         self.font_size_input.setObjectName("FontSizeButton")
         self.font_size_input.setFixedWidth(64)
-        for size in ("8", "9", "10", "11", "12", "13", "14", "16", "18", "20", "24", "28", "32", "36", "48"):
-            self.font_size_input.addItem(size)
+        for size in [*range(8, 37), 48]:
+            self.font_size_input.addItem(str(size))
         toolbar.addWidget(self.font_size_input)
 
         toolbar.addSeparator()
@@ -840,8 +843,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         toolbar._reflow()
 
-        self.undo_action.triggered.connect(lambda: self.content_input.undo())
-        self.redo_action.triggered.connect(lambda: self.content_input.redo())
+        self.undo_action.triggered.connect(self._undo_editor_change)
+        self.redo_action.triggered.connect(self._redo_editor_change)
         self.bold_action.triggered.connect(self._toggle_bold)
         self.italic_action.triggered.connect(self._toggle_italic)
         self.underline_action.triggered.connect(self._toggle_underline)
@@ -1280,6 +1283,21 @@ class MainWindow(QtWidgets.QMainWindow):
         cursor.mergeCharFormat(char_format)
         self.content_input.mergeCurrentCharFormat(char_format)
 
+    def _undo_editor_change(self) -> None:
+        self.content_input.setFocus(QtCore.Qt.FocusReason.ShortcutFocusReason)
+        self.content_input.undo()
+        self._sync_format_controls()
+
+    def _redo_editor_change(self) -> None:
+        self.content_input.setFocus(QtCore.Qt.FocusReason.ShortcutFocusReason)
+        self.content_input.redo()
+        self._sync_format_controls()
+
+    def _update_undo_redo_actions(self) -> None:
+        document = self.content_input.document()
+        self.undo_action.setEnabled(document.isUndoAvailable())
+        self.redo_action.setEnabled(document.isRedoAvailable())
+
     def _toggle_bold(self) -> None:
         char_format = QtGui.QTextCharFormat()
         weight = QtGui.QFont.Weight.Bold if self.bold_action.isChecked() else QtGui.QFont.Weight.Normal
@@ -1488,6 +1506,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _next_font_size(current_size: float, delta: int) -> float:
         return max(1, current_size + delta)
 
+    @staticmethod
+    def _font_size_label(point_size: float) -> str:
+        rounded_size = int(point_size + 0.5)
+        return str(max(1, rounded_size))
+
     def _sync_format_controls(self) -> None:
         if not hasattr(self, "content_input"):
             return
@@ -1512,11 +1535,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.align_right_action.setChecked(bool(alignment & QtCore.Qt.AlignmentFlag.AlignRight))
         self.align_justify_action.setChecked(bool(alignment & QtCore.Qt.AlignmentFlag.AlignJustify))
         self.font_family_input.setCurrentText(font.family())
-        point_size = char_format.fontPointSize() or self.content_input.fontPointSize() or 12
-        self.font_size_input.setCurrentText(str(int(point_size)))
+        point_size = (
+            char_format.fontPointSize()
+            or self.content_input.fontPointSize()
+            or self.content_input.font().pointSizeF()
+            or 12
+        )
+        self.font_size_input.setCurrentText(self._font_size_label(point_size))
         self._updating_format_controls = False
 
-    def refresh_notes(self, selected_note_id: str | None = None) -> None:
+    def refresh_notes(self, selected_note_id: str | None = None, *, reload_selected: bool = True) -> None:
         if selected_note_id is None:
             selected_items = self.note_list.selectedItems()
             if selected_items:
@@ -1533,7 +1561,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._select_note(selected_note_id)
         self.note_list.blockSignals(False)
 
-        if selected_note_id is not None and self._has_note_item(selected_note_id):
+        if reload_selected and selected_note_id is not None and self._has_note_item(selected_note_id):
             note = self.repository.get_note(selected_note_id)
             self._display_note(note)
 
@@ -1602,8 +1630,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_form_to_current_note()
         saved_note = self.repository.save(self.current_note)
         self.current_note = saved_note
-        self.refresh_notes(selected_note_id=saved_note.id)
+        self.refresh_notes(selected_note_id=saved_note.id, reload_selected=False)
         self._update_note_meta_label()
+        self._update_undo_redo_actions()
         if show_status:
             self.statusBar().showMessage(self._tr("status_saved_note", title=saved_note.display_title))
 
@@ -2203,6 +2232,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.content_input.blockSignals(False)
         self._refresh_image_list()
         self._sync_format_controls()
+        self._update_undo_redo_actions()
         self._update_note_meta_label()
         self._update_character_count()
         self._update_assistant_panel()
