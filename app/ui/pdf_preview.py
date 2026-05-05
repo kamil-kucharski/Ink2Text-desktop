@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -11,15 +12,14 @@ class PDFPreviewDialog(QtWidgets.QDialog):
         pdf_path: Path,
         title: str,
         parent: QtWidgets.QWidget | None = None,
+        translator: Callable[[str], str] | None = None,
     ) -> None:
         super().__init__(parent)
+        self._tr = translator or self._fallback_translate
         try:
             from PySide6 import QtPdf, QtPdfWidgets
         except ModuleNotFoundError as error:
-            raise RuntimeError(
-                "Brakuje modułów Qt potrzebnych do podglądu PDF. "
-                "Upewnij się, że PySide6 jest poprawnie zainstalowane."
-            ) from error
+            raise RuntimeError(self._tr("dialog_pdf_dependency_error")) from error
 
         self.pdf_path = pdf_path
         self.setWindowTitle(title)
@@ -42,7 +42,7 @@ class PDFPreviewDialog(QtWidgets.QDialog):
         self.zoom_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.zoom_in_button = QtWidgets.QPushButton("+")
         self.zoom_in_button.setObjectName("IconButton")
-        self.fit_width_button = QtWidgets.QPushButton("Dopasuj")
+        self.fit_width_button = QtWidgets.QPushButton(self._tr("dialog_fit_width"))
         self.fit_width_button.setObjectName("DialogCloseButton")
         toolbar.addWidget(self.zoom_out_button)
         toolbar.addWidget(self.zoom_label)
@@ -53,7 +53,7 @@ class PDFPreviewDialog(QtWidgets.QDialog):
         self.pdf_document = QtPdf.QPdfDocument(self)
         load_error = self.pdf_document.load(str(pdf_path))
         if load_error != QtPdf.QPdfDocument.Error.None_:
-            raise RuntimeError("Nie udało się wczytać wygenerowanego podglądu PDF.")
+            raise RuntimeError(self._tr("dialog_pdf_preview_load_failed"))
 
         self.pdf_view = QtPdfWidgets.QPdfView()
         self.pdf_view.setObjectName("PDFPreviewView")
@@ -90,7 +90,7 @@ class PDFPreviewDialog(QtWidgets.QDialog):
     def _fit_to_width(self) -> None:
         self.pdf_view.setZoomMode(self.pdf_view.ZoomMode.FitToWidth)
         self._zoom_factor = self.pdf_view.zoomFactor()
-        self.zoom_label.setText("Auto")
+        self.zoom_label.setText(self._tr("dialog_auto_zoom"))
 
     def _update_zoom_label(self) -> None:
         self.zoom_label.setText(f"{round(self._zoom_factor * 100)}%")
@@ -102,3 +102,15 @@ class PDFPreviewDialog(QtWidgets.QDialog):
         except OSError:
             pass
         super().closeEvent(event)
+
+    def _fallback_translate(self, key: str) -> str:
+        fallback = {
+            "dialog_pdf_dependency_error": (
+                "Brakuje modułów Qt potrzebnych do podglądu PDF. "
+                "Upewnij się, że PySide6 jest poprawnie zainstalowane."
+            ),
+            "dialog_pdf_preview_load_failed": "Nie udało się wczytać wygenerowanego podglądu PDF.",
+            "dialog_fit_width": "Dopasuj",
+            "dialog_auto_zoom": "Auto",
+        }
+        return fallback.get(key, key)

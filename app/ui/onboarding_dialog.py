@@ -115,6 +115,7 @@ class OnboardingDialog(QtWidgets.QDialog):
         self.api_key_label.setText(self._tr("settings_api_key"))
         self.api_key_input.setPlaceholderText(self._tr("settings_api_placeholder"))
         self.model_label.setText(self._tr("settings_model"))
+        self.model_input.setPlaceholderText(self._tr("select_placeholder"))
         self.steps_label.setText(self._tr("onboarding_steps"))
         self.start_button.setText(self._tr("onboarding_start"))
         self.cancel_button.setText(self._tr("onboarding_later"))

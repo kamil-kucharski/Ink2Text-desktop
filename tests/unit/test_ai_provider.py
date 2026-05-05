@@ -58,8 +58,11 @@ def test_build_transcription_prompt_contains_required_rules() -> None:
 
     assert "Nie poprawiaj stylu" in prompt
     assert "Nie dodawaj nagłówków" in prompt
-    assert "Nie tłumacz notatki na inny język" in prompt
+    assert "Nie tłumacz notatki na język polski" in prompt
+    assert "If the handwritten note is in English" in prompt
+    assert "return the final note in English only" in prompt
     assert "[nieczytelne]" in prompt
+    assert "[unreadable]" in prompt
     assert "Nie dopisuj informacji" in prompt
 
 
@@ -98,7 +101,19 @@ def test_gemini_provider_requires_api_key() -> None:
     try:
         provider.transcribe_images([Path("example.jpg")])
     except MissingAPIKeyError as error:
-        assert "GEMINI_API_KEY" in str(error)
+        assert "Ustaw klucz API Gemini w aplikacji w Ustawieniach" in str(error)
+    else:  # pragma: no cover
+        raise AssertionError("Expected MissingAPIKeyError")
+
+
+def test_gemini_provider_uses_english_messages_when_configured() -> None:
+    provider = GeminiAIProvider(api_key=None, model_name="gemini-test", language="en")
+
+    try:
+        provider.transcribe_images([Path("example.jpg")])
+    except MissingAPIKeyError as error:
+        assert "Gemini API key is missing" in str(error)
+        assert "Settings" in str(error)
     else:  # pragma: no cover
         raise AssertionError("Expected MissingAPIKeyError")
 

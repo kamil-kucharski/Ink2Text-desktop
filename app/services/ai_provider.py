@@ -22,9 +22,12 @@ TRANSCRIPTION_MODE_LABELS = {
 
 def build_transcription_prompt(mode: str = "faithful") -> str:
     common_rules = (
-        "Zachowaj oryginalny język notatek.\n"
-        "Zwróć tekst wyłącznie w języku użytym na obrazie. Nie tłumacz notatki na inny język.\n"
-        "Jeśli jakiś fragment jest nieczytelny, wpisz [nieczytelne].\n"
+        "Najważniejsza zasada językowa: zachowaj język źródłowy widoczny na zdjęciach.\n"
+        "Zwróć tekst wyłącznie w języku użytym na obrazie. Nie tłumacz notatki na język polski ani na żaden inny język.\n"
+        "Jeśli notatka na zdjęciu jest po angielsku, cała odpowiedź musi być po angielsku: nagłówki, listy, poprawki stylistyczne i dopisane wyjaśnienia.\n"
+        "If the handwritten note is in English, return the final note in English only. Do not translate it to Polish, even if this instruction is written in Polish.\n"
+        "If the note uses another language, return the final note in that same language only.\n"
+        "Jeśli jakiś fragment jest nieczytelny, oznacz go krótkim znacznikiem w języku źródłowym, np. [unreadable] dla angielskiego albo [nieczytelne] dla polskiego.\n"
         "Zwróć wyłącznie gotową treść notatki bez komentarza wstępnego."
     )
 
@@ -117,6 +120,7 @@ class GeminiAIProvider:
         retry_attempts: int = 3,
         initial_backoff_seconds: float = 1.0,
         sleep_func=time.sleep,
+        language: str = "pl",
     ) -> None:
         self.api_key = api_key
         self.model_name = model_name
@@ -125,6 +129,7 @@ class GeminiAIProvider:
         self.retry_attempts = max(1, retry_attempts)
         self.initial_backoff_seconds = max(0.0, initial_backoff_seconds)
         self.sleep_func = sleep_func
+        self.language = language if language in {"pl", "en"} else "pl"
 
     def transcribe_images(
         self,
@@ -134,7 +139,12 @@ class GeminiAIProvider:
         if not self.api_key:
             raise MissingAPIKeyError(self._missing_api_key_message())
         if not image_paths:
-            raise ProviderRequestError("Brak przygotowanych obrazów do wysłania.")
+            raise ProviderRequestError(
+                self._message(
+                    "Brak przygotowanych obrazów do wysłania.",
+                    "No prepared images to send.",
+                )
+            )
 
         client = self._create_client()
         prompt = build_transcription_prompt(transcription_mode)
@@ -155,7 +165,10 @@ class GeminiAIProvider:
             text = self._extract_text_from_response(response)
             if not text:
                 raise InvalidProviderResponseError(
-                    "Model nie zwrócił treści notatki. Spróbuj ponownie z innymi zdjęciami."
+                    self._message(
+                        "Model nie zwrócił treści notatki. Spróbuj ponownie z innymi zdjęciami.",
+                        "The model did not return note content. Try again with different photos.",
+                    )
                 )
 
             return TranscriptionResult(
@@ -167,12 +180,22 @@ class GeminiAIProvider:
         if last_retryable_error is not None:
             attempted_models_text = ", ".join(attempted_models)
             raise ProviderRequestError(
-                "Modele Gemini są chwilowo przeciążone lub niedostępne. "
-                f"Próbowano modeli: {attempted_models_text}. "
-                "Spróbuj ponownie za chwilę."
+                self._message(
+                    "Modele Gemini są chwilowo przeciążone lub niedostępne. "
+                    f"Próbowano modeli: {attempted_models_text}. "
+                    "Spróbuj ponownie za chwilę.",
+                    "Gemini models are temporarily overloaded or unavailable. "
+                    f"Attempted models: {attempted_models_text}. "
+                    "Try again in a moment.",
+                )
             ) from last_retryable_error
 
-        raise ProviderRequestError("Nie udało się przetworzyć notatki przez Gemini.")
+        raise ProviderRequestError(
+            self._message(
+                "Nie udało się przetworzyć notatki przez Gemini.",
+                "Could not process the note with Gemini.",
+            )
+        )
 
     def _create_client(self):
         genai_module, _ = self._load_sdk()
@@ -181,7 +204,12 @@ class GeminiAIProvider:
     def _build_image_part(self, image_path: Path):
         _, types_module = self._load_sdk()
         if not image_path.is_file():
-            raise ProviderRequestError(f"Nie znaleziono pliku obrazu: {image_path}")
+            raise ProviderRequestError(
+                self._message(
+                    f"Nie znaleziono pliku obrazu: {image_path}",
+                    f"Image file was not found: {image_path}",
+                )
+            )
 
         mime_type, _ = mimetypes.guess_type(str(image_path))
         return types_module.Part.from_bytes(
@@ -195,7 +223,10 @@ class GeminiAIProvider:
             from google.genai import types
         except ModuleNotFoundError as error:
             raise ProviderDependencyError(
-                "Brakuje pakietu google-genai. Doinstaluj zależności poleceniem: pip install -e .[dev]"
+                self._message(
+                    "Brakuje pakietu google-genai. Doinstaluj zależności poleceniem: pip install -e .[dev]",
+                    "The google-genai package is missing. Install dependencies with: pip install -e .[dev]",
+                )
             ) from error
 
         return genai, types
@@ -218,16 +249,10 @@ class GeminiAIProvider:
         return "\n".join(extracted_parts).strip()
 
     def _missing_api_key_message(self) -> str:
-        message = (
-            "Brak klucza API Gemini. Ustaw zmienną środowiskową GEMINI_API_KEY "
-            "lub GOOGLE_API_KEY."
+        return self._message(
+            "Brak klucza API Gemini. Ustaw klucz API Gemini w aplikacji w Ustawieniach.",
+            "Gemini API key is missing. Set your Gemini API key in the app Settings.",
         )
-        if self.config_path is not None:
-            message += (
-                f" Możesz też dodać lokalny plik {self.config_path} z polem "
-                '"gemini_api_key".'
-            )
-        return message
 
     def _candidate_models(self) -> list[str]:
         if self.model_name in self.fallback_models:
@@ -256,7 +281,12 @@ class GeminiAIProvider:
         if last_error is not None:  # pragma: no cover - pętla zawsze rzuca lub zwraca
             raise last_error
 
-        raise ProviderRequestError("Nie udało się skontaktować z Gemini.")
+        raise ProviderRequestError(
+            self._message(
+                "Nie udało się skontaktować z Gemini.",
+                "Could not contact Gemini.",
+            )
+        )
 
     def _is_retryable_error(self, error: Exception) -> bool:
         lowered = str(error).lower()
@@ -283,14 +313,35 @@ class GeminiAIProvider:
         lowered = message.lower()
 
         if "503" in lowered or "unavailable" in lowered or "overloaded" in lowered:
-            return "Gemini jest chwilowo przeciążony. Spróbuj ponownie za moment."
+            return self._message(
+                "Gemini jest chwilowo przeciążony. Spróbuj ponownie za moment.",
+                "Gemini is temporarily overloaded. Try again in a moment.",
+            )
         if "quota" in lowered or "429" in lowered or "rate limit" in lowered:
-            return "Przekroczono limit API Gemini. Spróbuj ponownie później."
+            return self._message(
+                "Przekroczono limit API Gemini. Spróbuj ponownie później.",
+                "Gemini API quota was exceeded. Try again later.",
+            )
         if "api key" in lowered or "permission" in lowered or "unauthorized" in lowered:
-            return "Gemini odrzucił klucz API lub uprawnienia do projektu."
+            return self._message(
+                "Gemini odrzucił klucz API lub uprawnienia do projektu.",
+                "Gemini rejected the API key or project permissions.",
+            )
         if "timeout" in lowered or "timed out" in lowered:
-            return "Przekroczono czas oczekiwania na odpowiedź Gemini."
+            return self._message(
+                "Przekroczono czas oczekiwania na odpowiedź Gemini.",
+                "Timed out while waiting for Gemini.",
+            )
         if "connection" in lowered or "network" in lowered:
-            return "Nie udało się połączyć z Gemini. Sprawdź internet i spróbuj ponownie."
+            return self._message(
+                "Nie udało się połączyć z Gemini. Sprawdź internet i spróbuj ponownie.",
+                "Could not connect to Gemini. Check your internet connection and try again.",
+            )
 
-        return f"Nie udało się przetworzyć notatki przez Gemini: {message}"
+        return self._message(
+            f"Nie udało się przetworzyć notatki przez Gemini: {message}",
+            f"Could not process the note with Gemini: {message}",
+        )
+
+    def _message(self, polish: str, english: str) -> str:
+        return english if self.language == "en" else polish

@@ -13,6 +13,7 @@ class PDFExportPayload:
     title: str
     content: str
     content_html: str | None = None
+    language: str = "pl"
 
 
 def build_note_html(payload: PDFExportPayload) -> str:
@@ -118,8 +119,13 @@ def export_note_to_pdf(
         from PySide6 import QtGui
     except ModuleNotFoundError as error:
         raise RuntimeError(
-            "Brakuje modułów Qt potrzebnych do eksportu PDF. "
-            "Upewnij się, że PySide6 jest poprawnie zainstalowane."
+            _message(
+                payload.language,
+                "Brakuje modułów Qt potrzebnych do eksportu PDF. "
+                "Upewnij się, że PySide6 jest poprawnie zainstalowane.",
+                "The Qt modules required for PDF export are missing. "
+                "Make sure PySide6 is installed correctly.",
+            )
         ) from error
 
     document_factory = text_document_factory or QtGui.QTextDocument
@@ -132,17 +138,27 @@ def export_note_to_pdf(
 
     writer = effective_pdf_writer_factory(str(pdf_path))
     writer.setResolution(300)
-    writer.setTitle(payload.title.strip() or "Bez tytułu")
+    writer.setTitle(payload.title.strip() or _message(payload.language, "Bez tytułu", "Untitled"))
     writer.setCreator("Ink2Text")
     margins = QtCore.QMarginsF(10, 10, 10, 10)
     writer.setPageMargins(margins, QtGui.QPageLayout.Unit.Millimeter)
 
     print_method = getattr(document, "print_", None) or getattr(document, "print", None)
     if print_method is None:
-        raise RuntimeError("Bieżąca wersja Qt nie udostępnia metody eksportu dokumentu do PDF.")
+        raise RuntimeError(
+            _message(
+                payload.language,
+                "Bieżąca wersja Qt nie udostępnia metody eksportu dokumentu do PDF.",
+                "The current Qt version does not provide a document-to-PDF export method.",
+            )
+        )
 
     print_method(writer)
     return pdf_path
+
+
+def _message(language: str, polish: str, english: str) -> str:
+    return english if language == "en" else polish
 
 
 def _plain_text_to_html(content: str) -> str:

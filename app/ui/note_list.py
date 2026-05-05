@@ -11,7 +11,13 @@ class NoteListItemWidget(QtWidgets.QFrame):
     selectedRequested = QtCore.Signal(str)
     trashRequested = QtCore.Signal(str)
 
-    def __init__(self, note: Note, updated_label: str, parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(
+        self,
+        note: Note,
+        updated_label: str,
+        parent: QtWidgets.QWidget | None = None,
+        trash_tooltip: str = "Przenieś do kosza",
+    ) -> None:
         super().__init__(parent)
         self.note_id = note.id
         self.setObjectName("NoteItemWidget")
@@ -35,7 +41,7 @@ class NoteListItemWidget(QtWidgets.QFrame):
         self.trash_button.setIcon(build_simple_icon("trash", "#c4322b", 36))
         self.trash_button.setIconSize(QtCore.QSize(23, 23))
         self.trash_button.setObjectName("InlineTrashButton")
-        self.trash_button.setToolTip("Przenieś do kosza")
+        self.trash_button.setToolTip(trash_tooltip)
         self.trash_button.setFixedSize(30, 30)
         self.trash_button.hide()
 
@@ -66,7 +72,14 @@ class TrashNoteWidget(QtWidgets.QFrame):
     restoreRequested = QtCore.Signal(str)
     deleteRequested = QtCore.Signal(str)
 
-    def __init__(self, note: Note, updated_label: str, parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(
+        self,
+        note: Note,
+        updated_label: str,
+        parent: QtWidgets.QWidget | None = None,
+        restore_text: str = "Przywróć",
+        delete_text: str = "Usuń",
+    ) -> None:
         super().__init__(parent)
         self.note_id = note.id
         self.setObjectName("TrashNoteWidget")
@@ -86,9 +99,9 @@ class TrashNoteWidget(QtWidgets.QFrame):
         text_layout.addWidget(self.title_label)
         text_layout.addWidget(self.date_label)
 
-        self.restore_button = QtWidgets.QPushButton("Przywróć")
+        self.restore_button = QtWidgets.QPushButton(restore_text)
         self.restore_button.setObjectName("TrashRestoreButton")
-        self.delete_button = QtWidgets.QPushButton("Usuń")
+        self.delete_button = QtWidgets.QPushButton(delete_text)
         self.delete_button.setObjectName("TrashDeleteButton")
         self.restore_button.hide()
         self.delete_button.hide()
@@ -162,7 +175,13 @@ class TrashDialog(QtWidgets.QDialog):
             item.setSizeHint(QtCore.QSize(500, 66))
             self.list_widget.addItem(item)
 
-            widget = TrashNoteWidget(note, self._format_datetime(note.updated_at), self.list_widget)
+            widget = TrashNoteWidget(
+                note,
+                self._format_datetime(note.updated_at),
+                self.list_widget,
+                restore_text=self._tr("trash_restore_action"),
+                delete_text=self._tr("trash_delete_action"),
+            )
             widget.restoreRequested.connect(self._restore_note)
             widget.deleteRequested.connect(self._delete_note_permanently)
             self.list_widget.setItemWidget(item, widget)

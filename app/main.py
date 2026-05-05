@@ -63,6 +63,7 @@ def main() -> int:
         api_key=app_config.gemini_api_key,
         model_name=app_config.gemini_model,
         config_path=app_config.config_path,
+        language=app_config.app_language,
     )
     window = MainWindow(
         repository=repository,

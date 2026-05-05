@@ -46,11 +46,13 @@ class AITranscriptionWorker(QtCore.QObject):
         ai_provider: AIProvider,
         image_paths: list[Path],
         transcription_mode: str,
+        unexpected_error_message: str,
     ) -> None:
         super().__init__()
         self.ai_provider = ai_provider
         self.image_paths = image_paths
         self.transcription_mode = transcription_mode
+        self.unexpected_error_message = unexpected_error_message
 
     @QtCore.Slot()
     def run(self) -> None:
@@ -63,7 +65,7 @@ class AITranscriptionWorker(QtCore.QObject):
         except AIProviderError as error:
             self.failed.emit(str(error))
         except Exception as error:  # pragma: no cover - osłona dla nieprzewidzianych błędów
-            self.failed.emit(f"Wystąpił nieoczekiwany błąd podczas przetwarzania AI: {error}")
+            self.failed.emit(self.unexpected_error_message.format(error=error))
         finally:
             self.finished.emit()
 
@@ -705,6 +707,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.loading_overlay.setGeometry(central_widget.rect())
         self.version_status_label = QtWidgets.QLabel("Ink2Text v1.1.5")
         self.version_status_label.setObjectName("StatusMeta")
+        self.version_status_label.setContentsMargins(14, 0, 0, 0)
         self.local_save_status_label = QtWidgets.QLabel()
         self.local_save_status_label.setObjectName("StatusMeta")
         self.statusBar().addPermanentWidget(self.version_status_label, stretch=1)
@@ -934,6 +937,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.help_tips_button.setText(self._tr("button_help_tips"))
         self.loading_overlay.set_text(self._tr("loading_creating_note"))
         self.local_save_status_label.setText(self._tr("status_local_saved"))
+        self.transcription_mode_input.setPlaceholderText(self._tr("select_placeholder"))
+        self.font_family_input.setPlaceholderText(self._tr("select_placeholder"))
+        self.font_size_input.setPlaceholderText(self._tr("select_placeholder"))
         self.bold_action.setToolTip(self._tr("tooltip_bold"))
         self.italic_action.setToolTip(self._tr("tooltip_italic"))
         self.underline_action.setToolTip(self._tr("tooltip_underline"))
@@ -1554,7 +1560,12 @@ class MainWindow(QtWidgets.QMainWindow):
             item.setToolTip(note.updated_at.astimezone().strftime("%Y-%m-%d %H:%M"))
             item.setSizeHint(QtCore.QSize(220, 62))
             self.note_list.addItem(item)
-            widget = NoteListItemWidget(note, note_time, self.note_list)
+            widget = NoteListItemWidget(
+                note,
+                note_time,
+                self.note_list,
+                trash_tooltip=self._tr("tooltip_move_note_to_trash"),
+            )
             widget.selectedRequested.connect(self._select_note)
             widget.trashRequested.connect(self._move_note_to_trash_from_list)
             self.note_list.setItemWidget(item, widget)
@@ -1766,7 +1777,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.repository,
             )
         except RuntimeError as error:
-            QtWidgets.QMessageBox.warning(self, self._tr("dialog_missing_dependency"), str(error))
+            QtWidgets.QMessageBox.warning(
+                self,
+                self._tr("dialog_missing_dependency"),
+                self._tr("dialog_pillow_dependency_error"),
+            )
             self.statusBar().showMessage(self._tr("status_prepare_failed"))
             return
 
@@ -1793,7 +1808,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage(self._tr("status_ai_already_running"))
             return
         if self.app_config.load_error and not self.app_config.gemini_api_key:
-            QtWidgets.QMessageBox.warning(self, self._tr("dialog_config_error"), self.app_config.load_error)
+            message = (
+                self._tr("dialog_config_load_error_generic")
+                if self.app_language == "en"
+                else self.app_config.load_error
+            )
+            QtWidgets.QMessageBox.warning(self, self._tr("dialog_config_error"), message)
             self.statusBar().showMessage(self._tr("status_fix_ai_config"))
             return
 
@@ -1811,7 +1831,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.repository,
             )
         except RuntimeError as error:
-            QtWidgets.QMessageBox.warning(self, self._tr("dialog_missing_dependency"), str(error))
+            QtWidgets.QMessageBox.warning(
+                self,
+                self._tr("dialog_missing_dependency"),
+                self._tr("dialog_pillow_dependency_error"),
+            )
             self.statusBar().showMessage(self._tr("status_prepare_ai_failed"))
             return
 
@@ -1829,6 +1853,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ai_provider,
             prepared_paths,
             transcription_mode=transcription_mode,
+            unexpected_error_message=self._tr("status_ai_unexpected_error", error="{error}"),
         )
         self.ai_worker.moveToThread(self.ai_thread)
 
@@ -1912,6 +1937,7 @@ class MainWindow(QtWidgets.QMainWindow):
             api_key=self.app_config.gemini_api_key,
             model_name=self.app_config.gemini_model,
             config_path=self.app_config.config_path,
+            language=self.app_language,
         )
         self._apply_translations()
         self.statusBar().showMessage(
@@ -1985,7 +2011,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         try:
             export_note_to_pdf(temp_path, self._current_pdf_payload())
-            dialog = PDFPreviewDialog(temp_path, self._tr("dialog_pdf_preview"), self)
+            dialog = PDFPreviewDialog(
+                temp_path,
+                self._tr("dialog_pdf_preview"),
+                self,
+                translator=self._tr,
+            )
         except RuntimeError as error:
             temp_path.unlink(missing_ok=True)
             QtWidgets.QMessageBox.warning(self, self._tr("dialog_export_error"), str(error))
@@ -2006,12 +2037,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _current_pdf_payload(self) -> PDFExportPayload:
         if self.current_note is None:
-            return PDFExportPayload(title="", content="")
+            return PDFExportPayload(title="", content="", language=self.app_language)
 
         return PDFExportPayload(
             title=self.current_note.title,
             content=self.current_note.content,
             content_html=(self.current_note.content if self.current_note.content_format == "html" else None),
+            language=self.app_language,
         )
 
     def _refresh_image_list(self) -> None:
@@ -2049,7 +2081,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _open_image_preview(self, relative_path: str) -> None:
         self._select_image(relative_path)
         image_path = self.repository.resolve_image_path(relative_path)
-        dialog = ImagePreviewDialog(image_path, Path(relative_path).name, self)
+        dialog = ImagePreviewDialog(
+            image_path,
+            Path(relative_path).name,
+            self,
+            close_text=self._tr("dialog_close"),
+            load_error_text=self._tr("label_preview_load_failed"),
+        )
         dialog.exec()
 
     def _remove_image_by_relative_path(self, relative_path: str) -> None:

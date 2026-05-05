@@ -229,10 +229,13 @@ class ImagePreviewDialog(QtWidgets.QDialog):
         image_path: Path,
         title: str,
         parent: QtWidgets.QWidget | None = None,
+        close_text: str = "Zamknij",
+        load_error_text: str = "Nie udało się wczytać podglądu",
     ) -> None:
         super().__init__(parent)
         self.image_path = image_path
         self.original_pixmap = QtGui.QPixmap(str(image_path))
+        self.load_error_text = load_error_text
         self.setWindowTitle(title)
         self.resize(900, 680)
 
@@ -246,7 +249,7 @@ class ImagePreviewDialog(QtWidgets.QDialog):
         self.image_label.setMinimumSize(520, 420)
         layout.addWidget(self.image_label, stretch=1)
 
-        close_button = QtWidgets.QPushButton("Zamknij")
+        close_button = QtWidgets.QPushButton(close_text)
         close_button.setObjectName("DialogCloseButton")
         close_button.clicked.connect(self.accept)
         layout.addWidget(close_button, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
@@ -259,7 +262,7 @@ class ImagePreviewDialog(QtWidgets.QDialog):
 
     def _update_preview(self) -> None:
         if self.original_pixmap.isNull():
-            self.image_label.setText("Nie udało się wczytać podglądu")
+            self.image_label.setText(self.load_error_text)
             return
 
         self.image_label.setPixmap(

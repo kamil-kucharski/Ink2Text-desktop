@@ -219,6 +219,7 @@ class AISettingsDialog(QtWidgets.QDialog):
         self.api_key_label.setText(self._tr("settings_api_key"))
         self.api_key_input.setPlaceholderText(self._tr("settings_api_placeholder"))
         self.model_label.setText(self._tr("settings_model"))
+        self.model_input.setPlaceholderText(self._tr("select_placeholder"))
         self.language_section_label.setText(self._tr("settings_language_section"))
         self.language_description_label.setText(self._tr("settings_language_description"))
         self.language_switch.set_labels(
