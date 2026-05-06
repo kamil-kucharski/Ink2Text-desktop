@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logoink2text_full.png" alt="Ink2Text logo" width="180">
+  <img src="assets/logoink2text_full.png" alt="Ink2Text logo" width="100">
 </p>
 
 <h1 align="center">Ink2Text</h1>
