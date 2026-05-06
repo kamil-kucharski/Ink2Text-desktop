@@ -31,9 +31,14 @@
 
 <p align="center">
   <img src="docs/screenshots/ai-settings.png" alt="Ink2Text AI settings preview" width="420">
+  <br>
+  <sub>AI settings for configuring the Gemini API key, model, and app language.</sub>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/pdf-preview.png" alt="Ink2Text PDF preview" width="420">
   <br>
-  <sub>AI configuration and PDF preview workflow.</sub>
+  <sub>PDF preview for checking the final document before export.</sub>
 </p>
 
 <br>

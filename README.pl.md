@@ -31,9 +31,14 @@
 
 <p align="center">
   <img src="docs/screenshots/ai-settings.png" alt="Podgląd ustawień AI Ink2Text" width="420">
+  <br>
+  <sub>Ustawienia AI do konfiguracji klucza Gemini, modelu i języka aplikacji.</sub>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/pdf-preview.png" alt="Podgląd PDF Ink2Text" width="420">
   <br>
-  <sub>Konfiguracja AI oraz podgląd PDF.</sub>
+  <sub>Podgląd PDF pozwalający sprawdzić finalny dokument przed eksportem.</sub>
 </p>
 
 <br>
