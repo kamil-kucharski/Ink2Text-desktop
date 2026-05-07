@@ -109,11 +109,11 @@ Handwritten notes are still useful, fast, and natural, but they are difficult to
 
 Ink2Text was a good exercise in building a desktop app as a complete product, not just a technical demo. The most valuable parts were:
 
+- Designing an AI workflow that feels reliable for the user: structured prompts, source-language preservation, retries, model fallback, API key handling, and readable error messages.
+- Writing object-oriented Python code in a more structured and maintainable way.
 - Splitting a Python codebase into clear layers: UI components, services, storage, models, configuration, and build scripts.
 - Working with PySide6 beyond basic widgets by creating custom UI elements, shared styling, localized text, and behavior that stays consistent on Linux and Windows.
-- Designing an AI workflow that feels reliable for the user: structured prompts, source-language preservation, retries, model fallback, API key handling, and readable error messages.
 - Keeping the app local-first, with notes, settings, and sensitive configuration stored on the user's machine instead of depending on an external backend.
-- Connecting several desktop-specific workflows in one place: image import, drag-and-drop ordering, rich text editing, PDF preview, and PDF rendering.
 
 <br>
 
