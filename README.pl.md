@@ -109,11 +109,11 @@ Odręczne notatki nadal są szybkie, wygodne i naturalne, ale trudno je przeszuk
 
 Ink2Text był dobrym ćwiczeniem w budowaniu aplikacji desktopowej jako kompletnego produktu, a nie tylko technicznego demo. Najważniejsze elementy tego procesu to:
 
+- Zaprojektowanie workflow AI, które jest przewidywalne dla użytkownika: uporządkowane prompty, zachowanie języka źródłowego, ponawianie zapytań, fallback modeli, obsługa klucza API i czytelne błędy.
+- Tworzenie bardziej uporządkowanego i łatwego w utrzymaniu kodu obiektowego w Pythonie.
 - Podzielenie kodu Pythonowego na czytelne warstwy: komponenty UI, serwisy, storage, modele, konfigurację i skrypty buildowania.
 - Praca z PySide6 wykraczająca poza podstawowe widgety, czyli własne komponenty, wspólny styl, lokalizacja tekstów i zachowanie spójne na Linuxie oraz Windowsie.
-- Zaprojektowanie workflow AI, które jest przewidywalne dla użytkownika: uporządkowane prompty, zachowanie języka źródłowego, ponawianie zapytań, fallback modeli, obsługa klucza API i czytelne błędy.
 - Podejście local-first, w którym notatki, ustawienia i wrażliwa konfiguracja zostają na komputerze użytkownika zamiast wymagać zewnętrznego backendu.
-- Połączenie kilku typowo desktopowych przepływów w jednym miejscu: import obrazów, zmiana kolejności drag-and-drop, edycja rich text, podgląd PDF i renderowanie PDF.
 
 <br>
 
